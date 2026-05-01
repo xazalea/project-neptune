@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Neptune Kernel Tests</title>
+  <style>
+    body { background: #0a0a0f; color: #00ff88; font-family: 'JetBrains Mono', monospace; padding: 2rem; }
+    .pass { color: #00ff88; }
+    .fail { color: #ff4444; }
+    .info { color: #888; }
+    pre { background: #1a1a2e; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+    button { background: #00ff88; color: #0a0a0f; border: none; padding: 0.5rem 1rem; font-family: inherit; cursor: pointer; margin: 0.5rem 0; }
+    .test-group { margin: 2rem 0; border: 1px solid #1a1a2e; padding: 1rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Neptune WASM Unikernel - Integration Tests</h1>
+  <div id="results"></div>
+
+  <script type="module">
+    import init, { NeptuneKernel } from './pkg/neptune_kernel.js';
+
+    const results = document.getElementById('results');
+    let pass = 0, fail = 0;
+
+    function log(type, msg) {
+      const div = document.createElement('div');
+      div.className = type;
+      div.textContent = `[${type.toUpperCase()}] ${msg}`;
+      results.appendChild(div);
+      if (type === 'pass') pass++;
+      if (type === 'fail') fail++;
+    }
+
+    async function runTests() {
+      log('info', 'Initializing WASM module...');
+      try {
+        await init();
+        log('pass', 'WASM module initialized');
+      } catch (e) {
+        log('fail', 'WASM init failed: ' + e.message);
+        return;
+      }
+
+      // Test 1: Kernel creation
+      let kernel;
+      try {
+        kernel = new NeptuneKernel();
+        log('pass', 'NeptuneKernel instance created');
+      } catch (e) {
+        log('fail', 'Kernel creation failed: ' + e.message);
+        return;
+      }
+
+      // Test 2: Set target
+      try {
+        kernel.set_target('https://example.com');
+        const target = kernel.get_target();
+        if (target === 'https://example.com') {
+          log('pass', 'Target set/get: https://example.com');
+        } else {
+          log('fail', 'Target mismatch: ' + target);
+        }
+      } catch (e) {
+        log('fail', 'Target set/get failed: ' + e.message);
+      }
+
+      // Test 3: HTML transformation
+      try {
+        const html = '<html><head></head><body><a href="/about">About</a></body></html>';
+        const transformed = kernel.transform_html(html, 'https://example.com', 'https://localhost:8443');
+        if (transformed.includes('virtual-root') && transformed.includes('proxy')) {
+          log('pass', 'HTML transformation: links rewritten to virtual-root');
+        } else {
+          log('fail', 'HTML transformation did not include expected content');
+        }
+      } catch (e) {
+        log('fail', 'HTML transform failed: ' + e.message);
+      }
+
+      // Test 4: VFS operations
+      try {
+        kernel.vfs_write('/etc/neptune/test', new Uint8Array([1, 2, 3]), 0o644);
+        const data = kernel.vfs_read('/etc/neptune/test');
+        if (data && data.length === 3 && data[0] === 1) {
+          log('pass', 'VFS write/read: 3 bytes stored');
+        } else {
+          log('fail', 'VFS read returned unexpected data');
+        }
+      } catch (e) {
+        log('fail', 'VFS operation failed: ' + e.message);
+      }
+
+      // Test 5: Proxy rules
+      try {
+        kernel.add_rule('old.com', 'new.com');
+        const result = kernel.apply_rules('https://old.com/page');
+        if (result === 'https://new.com/page') {
+          log('pass', 'Proxy rule applied: old.com -> new.com');
+        } else {
+          log('fail', 'Rule application failed: ' + result);
+        }
+      } catch (e) {
+        log('fail', 'Proxy rule test failed: ' + e.message);
+      }
+
+      // Test 6: CORS strategy
+      try {
+        kernel.set_cors_strategy('webrtc');
+        log('pass', 'CORS strategy set to webrtc');
+      } catch (e) {
+        log('fail', 'CORS strategy failed: ' + e.message);
+      }
+
+      // Test 7: State serialization
+      try {
+        const state = kernel.serialize_state();
+        const parsed = JSON.parse(state);
+        if (parsed.request_count !== undefined && parsed.vfs_cache !== undefined) {
+          log('pass', 'State serialization: valid JSON structure');
+        } else {
+          log('fail', 'State serialization missing expected fields');
+        }
+      } catch (e) {
+        log('fail', 'State serialization failed: ' + e.message);
+      }
+
+      // Test 8: Snapshot creation
+      try {
+        const snapshot = kernel.create_snapshot();
+        if (snapshot && snapshot.length > 0) {
+          log('pass', 'Snapshot created: ' + snapshot.length + ' base64 chars');
+        } else {
+          log('fail', 'Snapshot empty');
+        }
+      } catch (e) {
+        log('fail', 'Snapshot creation failed: ' + e.message);
+      }
+
+      // Test 9: Heap stats
+      try {
+        const stats = JSON.parse(kernel.heap_stats());
+        if (stats.heap_size > 0 && stats.vfs_entries > 0) {
+          log('pass', 'Heap stats: ' + stats.heap_size + ' bytes, ' + stats.vfs_entries + ' entries');
+        } else {
+          log('fail', 'Heap stats unexpected: ' + JSON.stringify(stats));
+        }
+      } catch (e) {
+        log('fail', 'Heap stats failed: ' + e.message);
+      }
+
+      // Test 10: State restore
+      try {
+        const original = kernel.serialize_state();
+        kernel.vfs_write('/var/restore-test', new Uint8Array([9, 8, 7]), 0o644);
+        kernel.deserialize_state(original);
+        const restored = kernel.vfs_read('/var/restore-test');
+        if (!restored) {
+          log('pass', 'State restore: /var/restore-test correctly removed');
+        } else {
+          log('fail', 'State restore did not revert VFS state');
+        }
+      } catch (e) {
+        log('fail', 'State restore failed: ' + e.message);
+      }
+
+      // Summary
+      const summary = document.createElement('div');
+      summary.style.marginTop = '2rem';
+      summary.style.padding = '1rem';
+      summary.style.borderTop = '2px solid #00ff88';
+      summary.innerHTML = `<h2>Summary</h2><p class="pass">Passed: ${pass}</p><p class="fail">Failed: ${fail}</p>`;
+      results.appendChild(summary);
+    }
+
+    runTests();
+  </script>
+</body>
+</html>

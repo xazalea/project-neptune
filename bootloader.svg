@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 800 600">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap');
+    </style>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0f"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="600" fill="url(#bgGrad)" rx="8"/>
+
+  <!-- Terminal UI Container -->
+  <foreignObject x="20" y="20" width="760" height="560">
+    <div xmlns="http://www.w3.org/1999/xhtml" id="terminal-ui"
+         style="width:100%;height:100%;font-family:'JetBrains Mono',monospace;
+                font-size:13px;color:#00ff88;background:transparent;
+                overflow-y:auto;white-space:pre-wrap;line-height:1.4;">
+    </div>
+  </foreignObject>
+
+  <!-- Status Bar -->
+  <rect x="0" y="580" width="800" height="20" fill="#0f0f1a" opacity="0.9"/>
+  <text id="status-text" x="10" y="594" fill="#00ff88" font-family="JetBrains Mono, monospace"
+        font-size="11" filter="url(#glow)">[BOOT] Initializing WASM unikernel...</text>
+
+  <!-- WASM Canvas (hidden until active) -->
+  <foreignObject x="0" y="0" width="1" height="1">
+    <canvas xmlns="http://www.w3.org/1999/xhtml" id="wasm-canvas" style="display:none;"/>
+  </foreignObject>
+
+  <script type="text/javascript">
+    <![CDATA[
+    (function() {
+      'use strict';
+
+      const LOG_LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+      let logLevel = LOG_LEVELS.DEBUG;
+      const terminal = document.getElementById('terminal-ui');
+      const statusText = document.getElementById('status-text');
+
+      function log(level, msg) {
+        if (level < logLevel) return;
+        const prefix = ['[DBG]', '[INF]', '[WRN]', '[ERR]'][level];
+        const line = document.createElement('div');
+        line.style.color = ['#888', '#00ff88', '#ffaa00', '#ff4444'][level];
+        line.textContent = prefix + ' ' + msg;
+        terminal.appendChild(line);
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+
+      function setStatus(msg) {
+        statusText.textContent = msg;
+        log(LOG_LEVELS.INFO, msg.replace(/\[.*?\]\s*/, ''));
+      }
+
+      // Parse URL parameters for target proxy
+      const params = new URLSearchParams(window.location.search);
+      const targetUrl = params.get('url');
+      const snapshotData = params.get('state');
+
+      log(LOG_LEVELS.INFO, '============================================');
+      log(LOG_LEVELS.INFO, 'project: neptune v0.1.0');
+      log(LOG_LEVELS.INFO, 'WASM Unikernel Proxy');
+      log(LOG_LEVELS.INFO, 'Bootloader: SVG Shell Mode');
+      log(LOG_LEVELS.INFO, '============================================');
+
+      if (snapshotData) {
+        log(LOG_LEVELS.INFO, 'State snapshot detected. Loading persisted heap...');
+        try {
+          const decoded = atob(snapshotData);
+          log(LOG_LEVELS.INFO, 'Snapshot size: ' + decoded.length + ' bytes');
+        } catch(e) {
+          log(LOG_LEVELS.ERROR, 'Failed to decode snapshot: ' + e.message);
+        }
+      }
+
+      if (targetUrl) {
+        log(LOG_LEVELS.INFO, 'Target URL: ' + targetUrl);
+      }
+
+      // Service Worker Registration
+      async function bootKernel() {
+        if (!('serviceWorker' in navigator)) {
+          log(LOG_LEVELS.ERROR, 'Service Workers not supported. Aborting.');
+          return;
+        }
+
+        try {
+          setStatus('[BOOT] Checking Service Worker state...');
+          const registration = await navigator.serviceWorker.register('sw.js', {
+            scope: './',
+            updateViaCache: 'none'
+          });
+
+          log(LOG_LEVELS.INFO, 'SW registered: ' + registration.scope);
+
+          await new Promise((resolve) => {
+            if (registration.installing) {
+              log(LOG_LEVELS.INFO, 'SW installing...');
+              registration.installing.addEventListener('statechange', function(e) {
+                log(LOG_LEVELS.INFO, 'SW state: ' + e.target.state);
+                if (e.target.state === 'activated') resolve();
+              });
+            } else if (registration.waiting) {
+              log(LOG_LEVELS.WARN, 'SW waiting (skip waiting triggered)');
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+              resolve();
+            } else if (registration.active) {
+              log(LOG_LEVELS.INFO, 'SW already active');
+              resolve();
+            }
+          });
+
+          // Wait for controller
+          if (!navigator.serviceWorker.controller) {
+            setStatus('[BOOT] Waiting for controller...');
+            await new Promise(resolve => {
+              navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+            });
+          }
+
+          setStatus('[BOOT] Kernel online. Handing off to SW...');
+
+          // Tell SW to tunnel target if provided
+          if (targetUrl && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'SET_TARGET',
+              url: targetUrl,
+              snapshot: snapshotData || null
+            });
+
+            log(LOG_LEVELS.INFO, 'Sending tunnel command to SW for: ' + targetUrl);
+
+            // Redirect to virtual root to trigger SW interception
+            setTimeout(() => {
+              const proxyPath = './virtual-root/?url=' + encodeURIComponent(targetUrl);
+              log(LOG_LEVELS.INFO, 'Redirecting to: ' + proxyPath);
+              window.location.href = proxyPath;
+            }, 500);
+          } else {
+            setStatus('[READY] No target URL. Use ?url=proxied.site');
+            log(LOG_LEVELS.INFO, 'System ready. Waiting for proxy target.');
+          }
+
+        } catch (err) {
+          log(LOG_LEVELS.ERROR, 'Kernel boot failed: ' + err.message);
+          setStatus('[FAIL] ' + err.message);
+        }
+      }
+
+      // Snapshot export function
+      window.exportState = function(heapData) {
+        const b64 = btoa(heapData);
+        const svgPayload = document.documentElement.outerHTML;
+        // Inject state into the SVG URL
+        const url = new URL(window.location.href);
+        url.searchParams.set('state', b64);
+        log(LOG_LEVELS.INFO, 'State snapshot exported. Size: ' + b64.length + ' bytes');
+        return url.toString();
+      };
+
+      // Start boot sequence
+      bootKernel();
+
+    })();
+    ]]>
+  </script>
+</svg>

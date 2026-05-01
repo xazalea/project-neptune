@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Neptune Unikernel Proxy",
+  "version": "0.1.0",
+  "description": "Browser-based WASM unikernel proxy with SVG bootloader",
+  "permissions": [
+    "<all_urls>",
+    "storage",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "sw.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["bootloader.svg", "vfs-bridge.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

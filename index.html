@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>project: neptune</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f;
+      color: #00ff88;
+      font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    .container {
+      width: 90%;
+      max-width: 900px;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+    }
+    .subtitle {
+      color: #888;
+      margin-bottom: 2rem;
+      font-size: 1rem;
+    }
+    .bootloader-frame {
+      width: 100%;
+      height: 500px;
+      border: 1px solid #1a1a2e;
+      border-radius: 8px;
+      background: #0f0f1a;
+      box-shadow: 0 0 30px rgba(0, 255, 136, 0.1);
+    }
+    .controls {
+      margin-top: 2rem;
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    input[type="text"] {
+      background: #1a1a2e;
+      border: 1px solid #333;
+      color: #00ff88;
+      padding: 0.75rem 1rem;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 1rem;
+      width: 400px;
+      max-width: 100%;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #00ff88;
+    }
+    button {
+      background: #00ff88;
+      color: #0a0a0f;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: #00cc6a;
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
+    }
+    .info {
+      margin-top: 2rem;
+      font-size: 0.85rem;
+      color: #555;
+    }
+    .info code {
+      background: #1a1a2e;
+      padding: 0.2rem 0.4rem;
+      border-radius: 3px;
+      color: #00ff88;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="pulse">project: neptune</h1>
+    <p class="subtitle">WASM Unikernel / Browser Proxy</p>
+
+    <iframe class="bootloader-frame" id="bootloader" src="bootloader.svg"></iframe>
+
+    <div class="controls">
+      <input type="text" id="target-url" placeholder="https://example.com" value="https://example.com">
+      <button onclick="bootProxy()">Boot Proxy</button>
+    </div>
+
+    <div class="info">
+      <p>Load the proxy directly: <code>bootloader.svg?url=https://example.com</code></p>
+      <p>Export state: call <code>window.exportState(heapData)</code> from the SVG context</p>
+    </div>
+  </div>
+
+  <script>
+    function bootProxy() {
+      const url = document.getElementById('target-url').value;
+      if (!url) return;
+      const iframe = document.getElementById('bootloader');
+      iframe.src = 'bootloader.svg?url=' + encodeURIComponent(url);
+    }
+
+    // Handle Enter key
+    document.getElementById('target-url').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') bootProxy();
+    });
+  </script>
+</body>
+</html>

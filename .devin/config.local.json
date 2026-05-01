@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(cargo)",
+      "Exec(wasm-pack)",
+      "Exec(find)"
+    ]
+  }
+}
