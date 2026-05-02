@@ -3,7 +3,15 @@
     "allow": [
       "Exec(cargo)",
       "Exec(wasm-pack)",
-      "Exec(find)"
+      "Exec(find)",
+      "Exec(curl)",
+      "Exec(rm)",
+      "Exec(python3)",
+      "Exec(grep)",
+      "Exec(sleep)",
+      "Exec(timeout)",
+      "Exec(cat)",
+      "Exec(true)"
     ]
   }
 }

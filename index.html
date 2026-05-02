@@ -2,131 +2,77 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>project: neptune</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #0a0a0f;
-      color: #00ff88;
-      font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      overflow: hidden;
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      background:#0a0a0f;color:#00ff88;
+      font-family:'SF Mono','Fira Code',monospace;
+      display:flex;flex-direction:column;align-items:center;
+      justify-content:center;min-height:100vh;padding:2rem;
     }
-    .container {
-      width: 90%;
-      max-width: 900px;
-      text-align: center;
+    .card{
+      width:100%;max-width:600px;
+      border:1px solid #1a1a2e;border-radius:6px;
+      background:#0f0f1a;padding:2rem;
     }
-    h1 {
-      font-size: 2.5rem;
-      margin-bottom: 1rem;
-      text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+    h1{font-size:2rem;margin-bottom:0.5rem;text-shadow:0 0 10px rgba(0,255,136,0.3);}
+    .sub{color:#666;margin-bottom:2rem;font-size:0.9rem;}
+    .row{display:flex;gap:0.5rem;margin-bottom:1rem;}
+    input{
+      flex:1;background:#1a1a2e;border:1px solid #333;
+      color:#00ff88;padding:0.6rem 0.8rem;border-radius:3px;
+      font-family:inherit;font-size:0.9rem;
     }
-    .subtitle {
-      color: #888;
-      margin-bottom: 2rem;
-      font-size: 1rem;
+    input:focus{outline:none;border-color:#00ff88;}
+    button{
+      background:#00ff88;color:#0a0a0f;border:none;
+      padding:0.6rem 1.2rem;border-radius:3px;
+      font-family:inherit;font-size:0.9rem;font-weight:bold;cursor:pointer;
     }
-    .bootloader-frame {
-      width: 100%;
-      height: 500px;
-      border: 1px solid #1a1a2e;
-      border-radius: 8px;
-      background: #0f0f1a;
-      box-shadow: 0 0 30px rgba(0, 255, 136, 0.1);
-    }
-    .controls {
-      margin-top: 2rem;
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-    input[type="text"] {
-      background: #1a1a2e;
-      border: 1px solid #333;
-      color: #00ff88;
-      padding: 0.75rem 1rem;
-      border-radius: 4px;
-      font-family: inherit;
-      font-size: 1rem;
-      width: 400px;
-      max-width: 100%;
-    }
-    input[type="text"]:focus {
-      outline: none;
-      border-color: #00ff88;
-    }
-    button {
-      background: #00ff88;
-      color: #0a0a0f;
-      border: none;
-      padding: 0.75rem 1.5rem;
-      border-radius: 4px;
-      font-family: inherit;
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    button:hover {
-      background: #00cc6a;
-      box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
-    }
-    .info {
-      margin-top: 2rem;
-      font-size: 0.85rem;
-      color: #555;
-    }
-    .info code {
-      background: #1a1a2e;
-      padding: 0.2rem 0.4rem;
-      border-radius: 3px;
-      color: #00ff88;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-    .pulse {
-      animation: pulse 2s infinite;
-    }
+    button:hover{background:#00cc6a;}
+    .info{color:#444;font-size:0.8rem;line-height:1.6;margin-top:1.5rem;}
+    .info code{background:#1a1a2e;padding:0.15rem 0.3rem;border-radius:2px;color:#00ff88;}
+    a{color:#00aa66;text-decoration:none;}
+    a:hover{color:#00ff88;}
+    .step{margin-bottom:0.8rem;color:#555;font-size:0.85rem;}
+    .step strong{color:#888;}
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1 class="pulse">project: neptune</h1>
-    <p class="subtitle">WASM Unikernel / Browser Proxy</p>
+  <div class="card">
+    <h1>project: neptune</h1>
+    <p class="sub">WASM Unikernel / Browser Proxy</p>
 
-    <iframe class="bootloader-frame" id="bootloader" src="bootloader.svg"></iframe>
-
-    <div class="controls">
-      <input type="text" id="target-url" placeholder="https://example.com" value="https://example.com">
-      <button onclick="bootProxy()">Boot Proxy</button>
+    <div class="row">
+      <input type="text" id="url" placeholder="https://example.com" value="https://example.com">
+      <button onclick="boot()">Boot Proxy</button>
     </div>
 
     <div class="info">
-      <p>Load the proxy directly: <code>bootloader.svg?url=https://example.com</code></p>
-      <p>Export state: call <code>window.exportState(heapData)</code> from the SVG context</p>
+      <div class="step"><strong>1.</strong> Build: <code>python3 build.py</code></div>
+      <div class="step"><strong>2.</strong> Serve: <code>python3 server.py</code></div>
+      <div class="step"><strong>3.</strong> Open the cartridge below with a target URL</div>
+      <p>Direct link: <a id="link" href="neptune.svg?url=https://example.com">neptune.svg?url=https://example.com</a></p>
+      <p style="margin-top:0.8rem">
+        The SVG is a self-contained "cartridge" that bootstraps a WASM unikernel,
+        registers a Service Worker, and proxies the target site through a local
+        tunnel with HTML rewriting.
+      </p>
     </div>
   </div>
 
   <script>
-    function bootProxy() {
-      const url = document.getElementById('target-url').value;
-      if (!url) return;
-      const iframe = document.getElementById('bootloader');
-      iframe.src = 'bootloader.svg?url=' + encodeURIComponent(url);
+    function boot(){
+      var u = document.getElementById('url').value;
+      if(!u) return;
+      window.location.href = 'neptune.svg?url=' + encodeURIComponent(u);
     }
-
-    // Handle Enter key
-    document.getElementById('target-url').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') bootProxy();
+    document.getElementById('url').addEventListener('keypress', function(e){
+      if(e.key === 'Enter') boot();
+    });
+    document.getElementById('url').addEventListener('input', function(e){
+      document.getElementById('link').href = 'neptune.svg?url=' + encodeURIComponent(e.target.value);
     });
   </script>
 </body>

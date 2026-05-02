@@ -1,0 +1,181 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0f"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="800" fill="url(#bg)" rx="4"/>
+
+  <foreignObject x="0" y="0" width="1200" height="800">
+    <div xmlns="http://www.w3.org/1999/xhtml" id="root"
+         style="width:100%;height:100%;display:flex;flex-direction:column;
+                font-family:monospace;color:#00ff88;overflow:hidden;
+                background:transparent;">
+      <div id="term" style="flex:0 0 auto;max-height:160px;overflow-y:auto;
+                  padding:10px 14px;font-size:12px;line-height:1.5;
+                  background:rgba(10,10,15,0.95);border-bottom:1px solid #1a1a2e;">
+      </div>
+      <div id="view" style="flex:1 1 auto;position:relative;overflow:hidden;">
+        <div id="ph" style="display:flex;align-items:center;justify-content:center;
+                    height:100%;color:#444;font-size:13px;">
+          Neptune WASM Unikernel — Waiting for target...
+        </div>
+      </div>
+      <div id="bar" style="flex:0 0 auto;padding:3px 14px;font-size:10px;
+                  background:#0f0f1a;color:#00aa66;border-top:1px solid #1a1a2e;">
+        [BOOT] project: neptune v0.1.0
+      </div>
+    </div>
+  </foreignObject>
+
+  <script type="text/javascript">
+    <![CDATA[
+    (function(){
+      'use strict';
+
+      // ====== EMBEDDED WASM BINARY (injected by build.py) ======
+      const WASM_B64 = "{{WASM_BIN}}";
+
+      const L = { DBG:0, INF:1, WRN:2, ERR:3 };
+      const C = ['#777','#00ff88','#ffaa00','#ff4444'];
+      const term = document.getElementById('term');
+      const bar = document.getElementById('bar');
+      const view = document.getElementById('view');
+      const ph = document.getElementById('ph');
+
+      function log(l,msg){
+        var d=document.createElement('div');
+        d.style.color=C[l]; d.textContent=['[DBG] ','[INF] ','[WRN] ','[ERR] '][l]+msg;
+        term.appendChild(d); term.scrollTop=term.scrollHeight;
+      }
+      function status(msg){ bar.textContent=msg; log(L.INF,msg.replace(/^\[.*?\]\s*/,'')); }
+
+      var params = new URLSearchParams(window.location.search);
+      var target = params.get('url');
+      var snapshot = params.get('state');
+      var proxyMode = params.has('__nptn');
+
+      if(proxyMode){ ph.textContent='Proxy content loading...'; return; }
+
+      log(L.INF,'========================================');
+      log(L.INF,'project: neptune v0.1.0');
+      log(L.INF,'========================================');
+      if(target) log(L.INF,'Target: '+target);
+      if(snapshot) log(L.INF,'Snapshot: '+atob(snapshot).length+' bytes');
+
+      // ====== WASM KERNEL ======
+      var kernel = null;
+
+      async function loadWASM(){
+        if(!WASM_B64 || WASM_B64==="{{WASM_BIN}}"){
+          log(L.WRN,'WASM not embedded — JS-only fallback');
+          return false;
+        }
+        try{
+          status('[BOOT] Loading WASM kernel...');
+
+          // Decode embedded binary
+          var bytes = Uint8Array.from(atob(WASM_B64), function(c){ return c.charCodeAt(0); });
+          log(L.INF,'WASM binary: '+bytes.length+' bytes');
+
+          // Dynamic import of JS glue, passing binary as Response
+          var mod = await import('./pkg/neptune_kernel.js');
+          var resp = new Response(bytes.buffer, { headers:{'Content-Type':'application/wasm'} });
+          await mod.default(resp);
+
+          kernel = new mod.NeptuneKernel();
+          if(snapshot) kernel.deserialize_state(atob(snapshot));
+          log(L.INF,'WASM kernel ready');
+          return true;
+        }catch(e){
+          log(L.ERR,'WASM load failed: '+e.message);
+          console.error(e);
+          return false;
+        }
+      }
+
+      // ====== SERVICE WORKER ======
+      async function bootSW(){
+        if(!('serviceWorker' in navigator)){
+          log(L.ERR,'Service Workers not supported'); return false;
+        }
+        try{
+          status('[BOOT] Registering Service Worker...');
+          var reg = await navigator.serviceWorker.register('sw.js',{
+            scope:'./', updateViaCache:'none'
+          });
+          log(L.INF,'SW scope: '+reg.scope);
+
+          await new Promise(function(r){
+            var sw=reg.installing||reg.waiting||reg.active;
+            if(!sw||sw.state==='activated'){r();return;}
+            sw.addEventListener('statechange',function(e){
+              log(L.INF,'SW state: '+e.target.state);
+              if(e.target.state==='activated')r();
+            });
+          });
+
+          if(!navigator.serviceWorker.controller){
+            status('[BOOT] Waiting for controller...');
+            await new Promise(function(r){
+              navigator.serviceWorker.addEventListener('controllerchange',r,{once:true});
+            });
+          }
+          log(L.INF,'SW controller active');
+          return true;
+        }catch(e){
+          log(L.ERR,'SW failed: '+e.message); status('[FAIL] '+e.message); return false;
+        }
+      }
+
+      // ====== PROXY TUNNEL ======
+      async function startProxy(){
+        if(!target){ status('[READY] No target. Use ?url=...'); return; }
+        status('[PROXY] Tunneling to '+target);
+
+        if(navigator.serviceWorker.controller){
+          navigator.serviceWorker.controller.postMessage({
+            type:'SET_TARGET', url:target, snapshot:snapshot||null
+          });
+        }
+
+        ph.remove();
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText='width:100%;height:100%;border:none;background:#fff;';
+        iframe.sandbox='allow-scripts allow-forms allow-popups allow-same-origin';
+
+        var u = new URL(window.location.href);
+        u.searchParams.set('__nptn','1');
+        u.searchParams.set('url',target);
+        iframe.src = u.toString();
+
+        view.appendChild(iframe);
+        log(L.INF,'Proxy iframe loaded');
+        status('[LIVE] Proxy active — '+target);
+      }
+
+      // ====== EXPORT ======
+      window.exportState = function(){
+        if(!kernel){ log(L.ERR,'WASM not loaded'); return null; }
+        try{
+          var snap = kernel.create_snapshot();
+          var u = new URL(window.location.href);
+          u.searchParams.set('state',snap);
+          log(L.INF,'Snapshot: '+snap.length+' chars');
+          return u.toString();
+        }catch(e){ log(L.ERR,'Export failed: '+e.message); return null; }
+      };
+
+      // ====== BOOT ======
+      async function boot(){
+        await loadWASM();
+        var ok = await bootSW();
+        if(ok) await startProxy();
+      }
+      boot();
+    })();
+    ]]>
+  </script>
+</svg>

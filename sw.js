@@ -1,499 +1,229 @@
 /**
  * project: neptune — Service Worker Kernel
- * Acts as the Network Interface Card (NIC) and Scheduler for the WASM unikernel.
- * Intercepts all fetch requests within scope and routes them through the WASM kernel.
+ * No external URLs. All proxying routes through the local dev server.
  */
 
 const SW_VERSION = '0.1.0';
-const CACHE_NAME = 'neptune-kernel-v' + SW_VERSION;
+const PROXY_BASE = (() => {
+  // Detect proxy endpoint from registration scope
+  const s = new URL(self.registration.scope);
+  return `${s.protocol}//${s.host}/proxy?url=`;
+})();
 
-// Kernel state
 let activeTarget = null;
-let wasmModule = null;
-let vfsReady = false;
-let snapshotData = null;
-let corsStrategy = 'proxy'; // 'proxy' | 'webrtc' | 'extension'
-
-// IndexedDB VFS handles
-const DB_NAME = 'neptune-vfs';
-const DB_VERSION = 1;
-let vfsDB = null;
-
-// WebRTC peer (if using bridge mode)
-let rtcPeer = null;
-let rtcDataChannel = null;
+let wasmReady = false;
 
 // ==========================
-// Lifecycle Events
+// Lifecycle
 // ==========================
-
-self.addEventListener('install', (event) => {
-  console.log('[SW] Neptune kernel installing v' + SW_VERSION);
+self.addEventListener('install', e => {
+  console.log('[SW] Installing v' + SW_VERSION);
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  console.log('[SW] Neptune kernel activated v' + SW_VERSION);
-  event.waitUntil(
-    clients.claim().then(() => {
-      initVFS();
-      broadcast({ type: 'KERNEL_READY', version: SW_VERSION });
-    })
-  );
+self.addEventListener('activate', e => {
+  console.log('[SW] Activated v' + SW_VERSION);
+  e.waitUntil(clients.claim());
 });
 
-self.addEventListener('message', (event) => {
-  const data = event.data;
-  if (!data || !data.type) return;
-
-  switch (data.type) {
-    case 'SKIP_WAITING':
-      self.skipWaiting();
-      break;
-
+self.addEventListener('message', e => {
+  const d = e.data;
+  if (!d || !d.type) return;
+  switch (d.type) {
+    case 'SKIP_WAITING': self.skipWaiting(); break;
     case 'SET_TARGET':
-      activeTarget = data.url;
-      snapshotData = data.snapshot || null;
-      console.log('[SW] Target set:', activeTarget);
-      // Persist target in VFS for recovery
-      vfsPut('/etc/neptune/target', activeTarget);
-      if (snapshotData) {
-        vfsPut('/var/neptune/snapshot', snapshotData);
-      }
+      activeTarget = d.url;
+      console.log('[SW] Target:', activeTarget);
       broadcast({ type: 'TARGET_SET', url: activeTarget });
       break;
-
-    case 'WASM_LOADED':
-      wasmModule = data.module;
-      console.log('[SW] WASM module registered');
-      break;
-
-    case 'SET_CORS_STRATEGY':
-      corsStrategy = data.strategy || 'proxy';
-      console.log('[SW] CORS strategy:', corsStrategy);
-      break;
-
-    case 'WEBRTC_CONNECT':
-      initWebRTC(data.config);
-      break;
-
-    case 'VFS_SYNC':
-      // Trigger VFS sync from WASM memory
-      syncVFSFromWASM(data.buffer);
-      break;
-
-    case 'EXPORT_STATE':
-      exportState().then(state => {
-        event.source.postMessage({ type: 'STATE_EXPORTED', state });
-      });
-      break;
-
-    default:
-      console.log('[SW] Unknown message type:', data.type);
+    case 'WASM_READY': wasmReady = true; break;
   }
 });
 
 // ==========================
-// Fetch Interception (The NIC)
+// Fetch Interception
 // ==========================
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
 
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  // Never intercept our own assets or the proxy endpoint
+  const skip = ['neptune.svg','sw.js','neptune_kernel.js','neptune_kernel_bg.wasm','server.py','build.py'];
+  if (skip.some(s => url.pathname.endsWith(s))) return;
+  if (url.pathname === '/proxy') return;
 
-  // Skip non-GET for now (can be expanded)
-  if (event.request.method !== 'GET' && event.request.method !== 'POST') {
-    return;
-  }
-
-  // Don't intercept our own assets
-  if (url.pathname.endsWith('bootloader.svg') ||
-      url.pathname.endsWith('sw.js') ||
-      url.pathname.endsWith('index.html')) {
-    return;
-  }
-
-  // Handle virtual-root routing
-  if (url.pathname.startsWith('/virtual-root/') || url.pathname === '/virtual-root') {
-    event.respondWith(handleVirtualRoot(event.request, url));
-    return;
-  }
-
-  // If we have an active target, intercept relative requests
-  if (activeTarget) {
-    event.respondWith(handleProxyRequest(event.request, url));
+  // Proxy mode: intercept requests for the target domain or relative paths
+  if (activeTarget && shouldIntercept(url, e.request)) {
+    e.respondWith(proxyRequest(e.request, url));
   }
 });
 
-// ==========================
-// Request Handlers
-// ==========================
+function shouldIntercept(url, req) {
+  // Intercept if we're inside the proxy iframe (has __nptn param)
+  // or if the request is for a path that should be proxied
+  const ref = req.referrer ? new URL(req.referrer) : null;
+  if (ref && ref.searchParams.has('__nptn')) return true;
+  // Also intercept relative requests when target is set
+  if (activeTarget && url.origin === self.location.origin) return true;
+  return false;
+}
 
-async function handleVirtualRoot(request, url) {
-  const target = activeTarget;
-  if (!target) {
-    return new Response(
-      '<html><body style="background:#0a0a0f;color:#00ff88;font-family:monospace;">' +
-      '<h1>No target configured</h1><p>Use ?url=proxied.site</p></body></html>',
-      { headers: { 'Content-Type': 'text/html' } }
-    );
+async function proxyRequest(req, url) {
+  let targetUrl;
+
+  if (url.searchParams.has('__nptn')) {
+    // This is the iframe root load - fetch the actual target
+    const t = url.searchParams.get('url') || activeTarget;
+    targetUrl = t;
+  } else if (url.origin === self.location.origin) {
+    // Relative request - resolve against target
+    const rel = url.pathname + url.search;
+    targetUrl = resolveURL(rel, activeTarget);
+  } else {
+    return fetch(req);
   }
 
-  // Proxy the initial request
+  if (!targetUrl) {
+    return errorResponse('No target configured', 400);
+  }
+
   try {
-    const response = await proxyFetch(target, {
-      method: request.method,
-      headers: request.headers,
-      redirect: 'follow'
-    });
+    const proxyURL = PROXY_BASE + encodeURIComponent(targetUrl);
+    const resp = await fetch(proxyURL, { method: req.method });
 
-    // Transform HTML to route through our scope
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('text/html')) {
-      const html = await response.text();
-      const transformed = transformHTML(html, target, url.origin);
+    if (!resp.ok) {
+      return errorResponse(`Proxy returned ${resp.status} for ${targetUrl}`, resp.status);
+    }
+
+    const ct = resp.headers.get('content-type') || '';
+
+    if (ct.includes('text/html')) {
+      const html = await resp.text();
+      const transformed = transformHTML(html, activeTarget, self.location.origin);
       return new Response(transformed, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: sanitizeHeaders(response.headers)
+        status: resp.status,
+        statusText: resp.statusText,
+        headers: sanitizeHeaders(resp.headers)
       });
     }
 
-    return response;
+    // Pass through non-HTML with sanitized headers
+    return new Response(resp.body, {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: sanitizeHeaders(resp.headers)
+    });
+
   } catch (err) {
     console.error('[SW] Proxy error:', err);
-    return new Response(
-      '<html><body style="background:#0a0a0f;color:#ff4444;font-family:monospace;">' +
-      '<h1>Proxy Error</h1><pre>' + err.message + '</pre></body></html>',
-      { status: 502, headers: { 'Content-Type': 'text/html' } }
-    );
-  }
-}
-
-async function handleProxyRequest(request, url) {
-  const target = activeTarget;
-  const targetUrl = new URL(target);
-
-  // Resolve relative URLs against the target
-  let proxiedUrl;
-  try {
-    // If it's an absolute URL not matching target, might be external resource
-    if (url.origin !== self.location.origin) {
-      return fetch(request); // Pass through
-    }
-    // Construct target-relative URL
-    const relativePath = url.pathname + url.search;
-    proxiedUrl = new URL(relativePath, target).toString();
-  } catch (e) {
-    return fetch(request);
-  }
-
-  try {
-    const response = await proxyFetch(proxiedUrl, {
-      method: request.method,
-      headers: request.headers,
-      body: request.body,
-      redirect: 'follow'
-    });
-
-    // Transform HTML responses
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('text/html')) {
-      const html = await response.text();
-      const transformed = transformHTML(html, target, self.location.origin);
-      return new Response(transformed, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: sanitizeHeaders(response.headers)
-      });
-    }
-
-    return response;
-  } catch (err) {
-    console.error('[SW] Proxy fetch error:', err);
-    return new Response('Proxy Error: ' + err.message, { status: 502 });
+    return errorResponse(err.message, 502);
   }
 }
 
 // ==========================
-// CORS Strategies
+// HTML Transformation
 // ==========================
+function transformHTML(html, targetUrl, origin) {
+  let t;
+  try { t = new URL(targetUrl); } catch(e) { return html; }
 
-async function proxyFetch(url, options) {
-  switch (corsStrategy) {
-    case 'extension':
-      // Extension mode: use chrome.extension.getBackgroundPage() equivalent
-      // In SW context, this assumes extension permissions are granted
-      return fetch(url, options);
+  const proxyRoot = origin + '/proxy?url=';
+  const targetOrigin = t.origin;
 
-    case 'webrtc':
-      return webrtcFetch(url, options);
+  let out = html;
 
-    case 'proxy':
-    default:
-      // Use a CORS relay or direct fetch with no-cors
-      try {
-        return await fetch(url, options);
-      } catch (e) {
-        // Fallback: try no-cors mode (opaque response)
-        console.warn('[SW] CORS blocked, trying no-cors fallback for:', url);
-        return fetch(url, { ...options, mode: 'no-cors' });
-      }
-  }
-}
-
-async function webrtcFetch(url, options) {
-  return new Promise((resolve, reject) => {
-    if (!rtcDataChannel || rtcDataChannel.readyState !== 'open') {
-      reject(new Error('WebRTC not connected'));
-      return;
-    }
-
-    const requestId = crypto.randomUUID();
-    const timeout = setTimeout(() => reject(new Error('WebRTC fetch timeout')), 30000);
-
-    const handler = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.requestId === requestId) {
-          rtcDataChannel.removeEventListener('message', handler);
-          clearTimeout(timeout);
-          if (msg.error) {
-            reject(new Error(msg.error));
-          } else {
-            resolve(new Response(msg.body, {
-              status: msg.status,
-              statusText: msg.statusText,
-              headers: msg.headers
-            }));
-          }
-        }
-      } catch (e) {
-        // Ignore non-JSON messages
-      }
-    };
-
-    rtcDataChannel.addEventListener('message', handler);
-    rtcDataChannel.send(JSON.stringify({
-      type: 'FETCH',
-      requestId,
-      url,
-      options: {
-        method: options.method,
-        headers: Array.from(options.headers.entries?.() || []),
-        body: options.body
-      }
-    }));
-  });
-}
-
-function initWebRTC(config) {
-  // STUN servers for NAT traversal
-  const rtcConfig = config || {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
+  // Helper: proxy any URL
+  const toProxy = (u) => {
+    if (u.startsWith('http')) return proxyRoot + encodeURIComponent(u);
+    if (u.startsWith('//')) return proxyRoot + encodeURIComponent('https:' + u);
+    if (u.startsWith('/')) return proxyRoot + encodeURIComponent(targetOrigin + u);
+    if (u.startsWith('#') || u.startsWith('javascript:')) return u;
+    return proxyRoot + encodeURIComponent(resolveURL(u, targetUrl));
   };
 
-  rtcPeer = new RTCPeerConnection(rtcConfig);
-  rtcDataChannel = rtcPeer.createDataChannel('neptune-proxy', {
-    ordered: true
-  });
+  // Rewrite href attributes
+  out = out.replace(/href="([^"]*)"/g, (m, u) => `href="${toProxy(u)}"`);
+  out = out.replace(/href='([^']*)'/g, (m, u) => `href="${toProxy(u)}"`);
 
-  rtcDataChannel.addEventListener('open', () => {
-    console.log('[SW] WebRTC data channel open');
-    broadcast({ type: 'WEBRTC_OPEN' });
-  });
+  // Rewrite src attributes
+  out = out.replace(/src="([^"]*)"/g, (m, u) => `src="${toProxy(u)}"`);
+  out = out.replace(/src='([^']*)'/g, (m, u) => `src="${toProxy(u)}"`);
 
-  rtcDataChannel.addEventListener('close', () => {
-    console.log('[SW] WebRTC data channel closed');
-    broadcast({ type: 'WEBRTC_CLOSE' });
-  });
+  // Rewrite action attributes (forms)
+  out = out.replace(/action="([^"]*)"/g, (m, u) => `action="${toProxy(u)}"`);
 
-  // Signaling would be handled externally via websocket/relay
-  console.log('[SW] WebRTC peer initialized');
+  // Rewrite CSS url()
+  out = out.replace(/url\((['"]?)([^'"\)]+)\1\)/g, (m, q, u) => `url(${toProxy(u)})`);
+
+  // Inject runtime script to intercept dynamic requests
+  const runtime = `<script>
+(function(){
+  var base='${targetOrigin}', proxy='${proxyRoot}';
+  var origFetch=window.fetch;
+  window.fetch=function(input,init){
+    var url=(typeof input==='string')?input:(input.url||input.toString());
+    if(url.startsWith('http')&&!url.includes(location.origin)){
+      url=proxy+encodeURIComponent(url);
+    } else if(url.startsWith('/')&&!url.startsWith('/proxy')){
+      url=proxy+encodeURIComponent(base+url);
+    }
+    return origFetch(url,init);
+  };
+  var origOpen=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(m,url,a,u,p){
+    if(url.startsWith('http')&&!url.includes(location.origin)){
+      url=proxy+encodeURIComponent(url);
+    } else if(url.startsWith('/')&&!url.startsWith('/proxy')){
+      url=proxy+encodeURIComponent(base+url);
+    }
+    return origOpen.call(this,m,url,a,u,p);
+  };
+  document.addEventListener('click',function(e){
+    var a=e.target.closest('a');
+    if(!a)return;
+    var h=a.getAttribute('href');
+    if(h&&!h.startsWith('javascript:')&&!h.startsWith('#')){
+      if(h.startsWith('http'))a.href=proxy+encodeURIComponent(h);
+      else if(h.startsWith('/'))a.href=proxy+encodeURIComponent(base+h);
+    }
+  });
+})();
+</script>`;
+
+  if (out.includes('</head>')) {
+    out = out.replace('</head>', runtime + '</head>');
+  } else if (out.includes('<body')) {
+    out = out.replace('<body', runtime + '<body');
+  } else {
+    out = runtime + out;
+  }
+
+  return out;
 }
 
-// ==========================
-// HTML Transformation Engine
-// ==========================
-
-function transformHTML(html, targetUrl, origin) {
-  const target = new URL(targetUrl);
-  const base = origin + '/virtual-root/';
-
-  // Inject base tag to help with relative URLs
-  const baseTag = `<base href="${target.origin}/">`;
-
-  // Rewrite absolute links to proxy through virtual-root
-  let transformed = html;
-
-  // href="/..." -> href="/virtual-root/..."
-  transformed = transformed.replace(
-    /href="\/([^"]*?)"/g,
-    'href="' + base + '$1"'
-  );
-
-  // href="http://target.com/..." -> href="/virtual-root/..."
-  const escapedOrigin = target.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const originRegex = new RegExp('href="' + escapedOrigin + '/([^"]*?)"', 'g');
-  transformed = transformed.replace(originRegex, 'href="' + base + '$1"');
-
-  // src="/..." -> src="/virtual-root/..."
-  transformed = transformed.replace(
-    /src="\/([^"]*?)"/g,
-    'src="' + base + '$1"'
-  );
-
-  // src="http://target.com/..." -> src="/virtual-root/..."
-  const srcOriginRegex = new RegExp('src="' + escapedOrigin + '/([^"]*?)"', 'g');
-  transformed = transformed.replace(srcOriginRegex, 'src="' + base + '$1"');
-
-  // Insert base tag and our proxy script
-  const proxyScript = `
-    <script>
-      // Neptune Proxy Runtime Injection
-      (function() {
-        // Override fetch to route through SW
-        const originalFetch = window.fetch;
-        window.fetch = function(input, init) {
-          let url = typeof input === 'string' ? input : input.url || input.toString();
-          if (url.startsWith('http') && !url.includes(location.origin)) {
-            // External URL - route through virtual-root
-            url = '${base}' + encodeURIComponent(url);
-          } else if (url.startsWith('/') && !url.startsWith('/virtual-root/')) {
-            url = '${base}' + url;
-          }
-          return originalFetch(url, init);
-        };
-
-        // Override XMLHttpRequest
-        const originalXhrOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-          if (url.startsWith('http') && !url.includes(location.origin)) {
-            url = '${base}' + encodeURIComponent(url);
-          } else if (url.startsWith('/') && !url.startsWith('/virtual-root/')) {
-            url = '${base}' + url;
-          }
-          return originalXhrOpen.call(this, method, url, async, user, password);
-        };
-      })();
-    </script>
-  `;
-
-  // Inject before closing </head> or at the start
-  if (transformed.includes('</head>')) {
-    transformed = transformed.replace('</head>', baseTag + proxyScript + '</head>');
-  } else if (transformed.includes('<body')) {
-    transformed = transformed.replace('<body', proxyScript + '<body');
-  } else {
-    transformed = proxyScript + transformed;
+function resolveURL(rel, base) {
+  try {
+    return new URL(rel, base).toString();
+  } catch(e) {
+    return base + (base.endsWith('/') ? '' : '/') + rel;
   }
-
-  // Inject state restoration if snapshot exists
-  if (snapshotData) {
-    const restoreScript = `<script>window.__NEPTUNE_SNAPSHOT__ = '${snapshotData}';</script>`;
-    transformed = transformed.replace('</head>', restoreScript + '</head>');
-  }
-
-  return transformed;
 }
 
 function sanitizeHeaders(headers) {
   const safe = new Headers();
-  const forbidden = ['set-cookie', 'content-security-policy', 'x-frame-options'];
-  headers.forEach((value, key) => {
-    if (!forbidden.includes(key.toLowerCase())) {
-      safe.set(key, value);
-    }
-  });
+  const drop = ['set-cookie','content-security-policy','x-frame-options','strict-transport-security'];
+  headers.forEach((v,k)=>{ if(!drop.includes(k.toLowerCase())) safe.set(k,v); });
   return safe;
 }
 
-// ==========================
-// Virtual File System (VFS)
-// ==========================
-
-async function initVFS() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      vfsDB = request.result;
-      vfsReady = true;
-      console.log('[SW] VFS initialized');
-      resolve();
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('files')) {
-        db.createObjectStore('files', { keyPath: 'path' });
-      }
-    };
-  });
+function errorResponse(msg, status) {
+  return new Response(
+    `<html><body style="background:#0a0a0f;color:#ff4444;font-family:monospace;padding:20px;">
+     <h1>Neptune Proxy Error ${status}</h1><pre>${msg}</pre></body></html>`,
+    { status, headers: { 'Content-Type': 'text/html' } }
+  );
 }
-
-async function vfsGet(path) {
-  if (!vfsDB) return null;
-  return new Promise((resolve) => {
-    const tx = vfsDB.transaction('files', 'readonly');
-    const store = tx.objectStore('files');
-    const request = store.get(path);
-    request.onsuccess = () => resolve(request.result?.data || null);
-    request.onerror = () => resolve(null);
-  });
-}
-
-async function vfsPut(path, data) {
-  if (!vfsDB) return;
-  return new Promise((resolve) => {
-    const tx = vfsDB.transaction('files', 'readwrite');
-    const store = tx.objectStore('files');
-    const request = store.put({ path, data, modified: Date.now() });
-    request.onsuccess = () => resolve(true);
-    request.onerror = () => resolve(false);
-  });
-}
-
-async function syncVFSFromWASM(buffer) {
-  // Deserialize WASM memory state into VFS
-  // This would be called by the WASM kernel during checkpoints
-  console.log('[SW] VFS sync from WASM:', buffer?.byteLength || 0, 'bytes');
-  await vfsPut('/var/neptune/wasm-memory', buffer);
-}
-
-async function exportState() {
-  // Gather all VFS state for snapshot export
-  const files = [];
-  if (!vfsDB) return { version: SW_VERSION, files };
-
-  return new Promise((resolve) => {
-    const tx = vfsDB.transaction('files', 'readonly');
-    const store = tx.objectStore('files');
-    const request = store.openCursor();
-
-    request.onsuccess = (event) => {
-      const cursor = event.target.result;
-      if (cursor) {
-        files.push(cursor.value);
-        cursor.continue();
-      } else {
-        resolve({ version: SW_VERSION, files });
-      }
-    };
-
-    request.onerror = () => resolve({ version: SW_VERSION, files });
-  });
-}
-
-// ==========================
-// Utilities
-// ==========================
 
 function broadcast(msg) {
-  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
-    clients.forEach(client => client.postMessage(msg));
-  });
+  clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then(cs => cs.forEach(c => c.postMessage(msg)));
 }
