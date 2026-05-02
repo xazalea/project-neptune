@@ -1,2 +1,0 @@
-createSrcSidebar('[["tl",["",[["inline",[],["hashmap.rs","mod.rs","vec.rs"]],["parser",[],["base.rs","constants.rs","handle.rs","mod.rs","options.rs","tag.rs"]],["queryselector",[],["iter.rs","iterable.rs","mod.rs","parser.rs","selector.rs"]],["simd",[],["fallback.rs","mod.rs","stable.rs"]]],["bytes.rs","errors.rs","lib.rs","stream.rs","util.rs","vdom.rs"]]]]');
-//{"start":19,"fragment_lengths":[341]}

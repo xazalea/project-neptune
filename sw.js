@@ -1,26 +1,20 @@
 /**
- * project: neptune — Service Worker Kernel
- * Multi-strategy proxy: iframe relay, WebRTC P2P, local proxy, extension mode.
+ * project: neptune — Service Worker Kernel v0.2.1
+ * Multi-strategy proxy with correct scope-based proxy detection.
  */
 
-const SW_VERSION = '0.2.0';
+const SW_VERSION = '0.2.1';
 
-// Configurable proxy endpoint
 let PROXY_BASE = null;
-
-// Strategy state
 let activeTarget = null;
-let activeStrategy = null; // 'extension' | 'iframe' | 'webrtc' | 'local' | 'hosted'
+let activeStrategy = null;
 let snapshotData = null;
+let proxyAvailable = null;
 
 // WebRTC state
 let rtcPeer = null;
 let rtcChannel = null;
 let rtcReady = false;
-
-// iframe relay state
-let iframeRelay = null;
-let iframeRelayReady = false;
 
 // ==========================
 // Lifecycle
@@ -59,17 +53,9 @@ self.addEventListener('message', e => {
       activeStrategy = d.strategy;
       console.log('[SW] Strategy forced:', d.strategy);
       if (d.strategy === 'webrtc') initWebRTC(d.config);
-      if (d.strategy === 'iframe') initIframeRelay();
       break;
     case 'WEBRTC_SIGNAL':
       handleRTCSignal(d);
-      break;
-    case 'IFRAME_RELAY_READY':
-      iframeRelayReady = true;
-      console.log('[SW] iframe relay ready');
-      break;
-    case 'IFRAME_RELAY_RESPONSE':
-      handleIframeResponse(d);
       break;
   }
 });
@@ -78,38 +64,31 @@ self.addEventListener('message', e => {
 // Strategy Detection
 // ==========================
 async function detectStrategy() {
-  // 1. Extension mode — no CORS restrictions
+  // 1. Extension mode
   try {
-    const test = await fetch('https://example.com', { method: 'HEAD', mode: 'no-cors' });
-    // If we can actually read the response (not opaque), we're in extension mode
     if (typeof chrome !== 'undefined' && chrome.runtime) {
+      const test = await fetch('https://example.com', { method: 'HEAD', mode: 'no-cors' });
       return 'extension';
     }
   } catch (e) {}
 
-  // 2. iframe relay — if target allows framing
-  // (tested lazily on first request)
-
-  // 3. WebRTC — if peer available
-  // (tested lazily on first request)
-
-  // 4. Local proxy
+  // 4. Local/Hosted proxy — detect from scope with ACTUAL fetch (not no-cors)
   if (!PROXY_BASE) {
-    const s = new URL(self.registration.scope);
-    PROXY_BASE = `${s.protocol}//${s.host}/proxy?url=`;
-  }
-  try {
-    const resp = await fetch(PROXY_BASE + encodeURIComponent('https://example.com'), {
-      method: 'HEAD', mode: 'no-cors'
-    });
-    return 'local';
-  } catch (e) {
-    console.log('[SW] Local proxy unavailable:', e.message);
+    const scope = self.registration.scope;
+    // Use scope directly (e.g. https://host.com/path/) + proxy?url=
+    PROXY_BASE = scope.replace(/\/$/, '') + '/proxy?url=';
   }
 
-  // 5. Hosted proxy (if configured)
-  if (PROXY_BASE && PROXY_BASE.includes('http')) {
-    return 'hosted';
+  try {
+    // Test proxy with a real fetch (not no-cors) so we can read the status
+    const testUrl = PROXY_BASE + encodeURIComponent('https://example.com');
+    const resp = await fetch(testUrl, { method: 'HEAD', cache: 'no-store' });
+    if (resp.status >= 200 && resp.status < 500) {
+      console.log('[SW] Proxy available at', PROXY_BASE);
+      return 'local';
+    }
+  } catch (e) {
+    console.log('[SW] Proxy not available:', e.message);
   }
 
   return 'none';
@@ -154,10 +133,10 @@ async function proxyRequest(req, url) {
     return errorResponse('No target configured', 400);
   }
 
-  // Try strategies in priority order
+  // Determine strategies to try
   const strategies = activeStrategy && activeStrategy !== 'none'
     ? [activeStrategy]
-    : ['extension', 'iframe', 'webrtc', 'local', 'hosted'];
+    : ['extension', 'webrtc', 'local'];
 
   for (const strategy of strategies) {
     try {
@@ -169,23 +148,37 @@ async function proxyRequest(req, url) {
   }
 
   return errorResponse(
-    `No working proxy strategy found.<br><br>` +
-    `Tried: ${strategies.join(', ')}<br><br>` +
-    `To fix:<br>` +
-    `1. Run <code>python3 server.py</code> locally for local proxy mode<br>` +
-    `2. Install as browser extension for unrestricted cross-origin access<br>` +
-    `3. Configure a hosted proxy via postMessage({type:'SET_PROXY', url:'...'})`,
+    buildErrorHtml(strategies, targetUrl),
     503
   );
+}
+
+function buildErrorHtml(strategies, targetUrl) {
+  const isStaticHost = !PROXY_BASE || PROXY_BASE.includes('github') || PROXY_BASE.includes('jsdelivr');
+  return `<div style="font-family:monospace;max-width:600px;margin:40px auto">
+<h2 style="color:#ff4444">Neptune Proxy Error — No working strategy</h2>
+<p><strong>Target:</strong> <code>${escapeHtml(targetUrl)}</code></p>
+<p><strong>Tried:</strong> ${strategies.join(', ')}</p>
+<hr style="border-color:#333">
+<h3 style="color:#00ff88">How to fix:</h3>
+${isStaticHost ? `<p style="color:#ffaa00">You're on a <strong>static host</strong> (${escapeHtml(location.host)}).<br>
+The proxy endpoint <code>/proxy</code> doesn't exist here.</p>` : ''}
+<ol style="line-height:1.8">
+<li><strong>Local dev (recommended):</strong><br>
+<code style="background:#1a1a2e;padding:4px 8px">python3 server.py</code><br>
+Then open <code>http://localhost:8080/neptune.svg?url=${encodeURIComponent(targetUrl)}</code></li>
+<li><strong>Browser Extension:</strong> Package as extension for <code>&lt;all_urls&gt;</code> permission (no proxy needed)</li>
+<li><strong>Hosted proxy:</strong> Host <code>server.py</code> somewhere, then:<br>
+<code style="background:#1a1a2e;padding:4px 8px">postMessage({type:'SET_PROXY', url:'https://your-proxy.com/proxy?url='})</code></li>
+<li><strong>WebRTC:</strong> Connect to a peer node with internet access</li>
+</ol>
+</div>`;
 }
 
 async function tryStrategy(strategy, targetUrl, req) {
   switch (strategy) {
     case 'extension':
       return await fetch(targetUrl, { method: req.method });
-
-    case 'iframe':
-      return await iframeFetch(targetUrl, req);
 
     case 'webrtc':
       return await webrtcFetch(targetUrl, req);
@@ -200,54 +193,38 @@ async function tryStrategy(strategy, targetUrl, req) {
 }
 
 // ==========================
-// iframe Relay Strategy
+// Local/Hosted Proxy Strategy
 // ==========================
-async function iframeFetch(url, req) {
-  if (!iframeRelayReady) {
-    // Try to initialize iframe relay
-    initIframeRelay();
-    // Wait a bit for it to load
-    await new Promise(r => setTimeout(r, 2000));
+async function proxyFetch(targetUrl, req) {
+  if (!PROXY_BASE) {
+    const scope = self.registration.scope;
+    PROXY_BASE = scope.replace(/\/$/, '') + '/proxy?url=';
   }
-  if (!iframeRelayReady) return null;
 
-  return new Promise((resolve, reject) => {
-    const requestId = crypto.randomUUID();
-    const timeout = setTimeout(() => reject(new Error('iframe relay timeout')), 15000);
+  const proxyURL = PROXY_BASE + encodeURIComponent(targetUrl);
+  const resp = await fetch(proxyURL, { method: req.method });
 
-    const handler = e => {
-      if (e.data && e.data.type === 'IFRAME_RELAY_RESPONSE' && e.data.requestId === requestId) {
-        clearTimeout(timeout);
-        self.removeEventListener('message', handler);
-        if (e.data.error) {
-          reject(new Error(e.data.error));
-        } else {
-          resolve(new Response(
-            e.data.body ? Uint8Array.from(atob(e.data.body), c => c.charCodeAt(0)) : null,
-            { status: e.data.status, headers: e.data.headers }
-          ));
-        }
-      }
-    };
+  if (!resp.ok && resp.status !== 304) {
+    return null; // Let error handler deal with it
+  }
 
-    self.addEventListener('message', handler);
-    iframeRelay.postMessage({
-      type: 'FETCH',
-      requestId,
-      url,
-      method: req.method,
-    }, '*');
+  const ct = resp.headers.get('content-type') || '';
+
+  if (ct.includes('text/html')) {
+    const html = await resp.text();
+    const transformed = transformHTML(html, activeTarget, self.location.origin);
+    return new Response(transformed, {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: sanitizeHeaders(resp.headers)
+    });
+  }
+
+  return new Response(resp.body, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers: sanitizeHeaders(resp.headers)
   });
-}
-
-function initIframeRelay() {
-  if (iframeRelay) return;
-  // The relay iframe is created by the parent page — we just listen for its ready signal
-  console.log('[SW] iframe relay init requested (parent must create iframe)');
-}
-
-function handleIframeResponse(data) {
-  // Response handled in iframeFetch promise
 }
 
 // ==========================
@@ -314,71 +291,23 @@ function initWebRTC(config) {
     broadcast({ type: 'WEBRTC_OPEN' });
   });
 
-  rtcChannel.addEventListener('close', () => {
-    rtcReady = false;
-    console.log('[SW] WebRTC channel closed');
-  });
+  rtcChannel.addEventListener('close', () => { rtcReady = false; });
 
-  // Signaling would be handled externally
-  console.log('[SW] WebRTC initialized, awaiting peer connection');
+  console.log('[SW] WebRTC initialized');
 }
 
 function handleRTCSignal(data) {
   if (!rtcPeer) return;
   if (data.sdp) {
     rtcPeer.setRemoteDescription(new RTCSessionDescription(data.sdp))
-      .then(() => {
-        if (data.sdp.type === 'offer') {
-          return rtcPeer.createAnswer();
-        }
-      })
-      .then(answer => {
-        if (answer) return rtcPeer.setLocalDescription(answer);
-      })
-      .then(() => {
-        broadcast({ type: 'WEBRTC_LOCAL_SDP', sdp: rtcPeer.localDescription });
-      })
+      .then(() => data.sdp.type === 'offer' ? rtcPeer.createAnswer() : null)
+      .then(answer => answer ? rtcPeer.setLocalDescription(answer) : null)
+      .then(() => broadcast({ type: 'WEBRTC_LOCAL_SDP', sdp: rtcPeer.localDescription }))
       .catch(e => console.error('[SW] RTC signal error:', e));
   }
   if (data.candidate) {
-    rtcPeer.addIceCandidate(new RTCIceCandidate(data.candidate))
-      .catch(e => console.error('[SW] ICE error:', e));
+    rtcPeer.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(e => console.error('[SW] ICE error:', e));
   }
-}
-
-// ==========================
-// Local/Hosted Proxy Strategy
-// ==========================
-async function proxyFetch(targetUrl, req) {
-  if (!PROXY_BASE) {
-    const s = new URL(self.registration.scope);
-    PROXY_BASE = `${s.protocol}//${s.host}/proxy?url=`;
-  }
-
-  const proxyURL = PROXY_BASE + encodeURIComponent(targetUrl);
-  const resp = await fetch(proxyURL, { method: req.method });
-
-  if (!resp.ok) {
-    return errorResponse(`Proxy returned ${resp.status}`, resp.status);
-  }
-
-  const ct = resp.headers.get('content-type') || '';
-
-  if (ct.includes('text/html')) {
-    const html = await resp.text();
-    const transformed = transformHTML(html, activeTarget, self.location.origin);
-    return new Response(transformed, {
-      status: resp.status,
-      statusText: resp.statusText,
-      headers: sanitizeHeaders(resp.headers)
-    });
-  }
-
-  return new Response(resp.body, {
-    status: resp.status,
-    statusText: resp.statusText,
-    headers: sanitizeHeaders(resp.headers)
-  });
 }
 
 // ==========================
@@ -453,11 +382,8 @@ function transformHTML(html, targetUrl, origin) {
 }
 
 function resolveURL(rel, base) {
-  try {
-    return new URL(rel, base).toString();
-  } catch(e) {
-    return base + (base.endsWith('/') ? '' : '/') + rel;
-  }
+  try { return new URL(rel, base).toString(); }
+  catch(e) { return base + (base.endsWith('/') ? '' : '/') + rel; }
 }
 
 function sanitizeHeaders(headers) {
@@ -469,23 +395,25 @@ function sanitizeHeaders(headers) {
 
 function errorResponse(msg, status) {
   return new Response(
-    `<html><head><meta charset="utf-8"><style>
-     body{background:#0a0a0f;color:#ff4444;font-family:monospace;padding:30px;line-height:1.6}
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+     body{background:#0a0a0f;color:#ccc;font-family:monospace;padding:20px;line-height:1.6}
      h1{color:#ff4444;border-bottom:1px solid #333;padding-bottom:10px}
      code{background:#1a1a2e;padding:2px 6px;border-radius:2px;color:#00ff88}
-     .box{background:#111;padding:15px;border-radius:4px;margin-top:15px}
+     .box{background:#111;padding:15px;border-radius:4px;margin-top:15px;color:#ff4444}
      .ok{color:#00ff88}
+     a{color:#00aa66}
      </style></head><body>
      <h1>Neptune Proxy Error ${status}</h1>
      <div class="box">${msg}</div>
      <p class="ok" style="margin-top:20px">Strategy: ${activeStrategy || 'detecting...'}</p>
+     <p>Proxy base: <code>${escapeHtml(PROXY_BASE || 'not set')}</code></p>
      </body></html>`,
     { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   );
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function broadcast(msg) {

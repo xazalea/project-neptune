@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["HTMLVersion","Node"],"fn":["parse","parse_owned","parse_query_selector"],"mod":["errors","inline","queryselector"],"struct":["Attributes","Bytes","Children","ChildrenMut","HTMLTag","NodeHandle","Parser","ParserOptions","VDom","VDomGuard"],"type":["ClassVec","InnerNodeHandle","RawAttributesMap","RawChildren","Tree"]};

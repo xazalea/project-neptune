@@ -20,13 +20,25 @@
       <div id="view" style="flex:1 1 auto;position:relative;overflow:hidden;">
         <div id="ph" style="display:flex;align-items:center;justify-content:center;
                     height:100%;color:#444;font-size:13px;flex-direction:column;">
-          <div>Neptune — waiting for boot...</div>
+          <div id="ph-text">Neptune — waiting for boot...</div>
           <div id="strategies" style="margin-top:8px;font-size:10px;color:#555;"></div>
+          <div id="input-form" style="display:none;margin-top:20px;">
+            <input id="url-input" type="text" placeholder="https://example.com"
+                   style="background:#1a1a2e;border:1px solid #333;color:#00ff88;
+                          padding:8px 12px;border-radius:3px;font-family:inherit;
+                          font-size:13px;width:300px;"
+                   onkeydown="if(event.key==='Enter')window.bootProxy()">
+            <button onclick="window.bootProxy()"
+                    style="background:#00ff88;color:#0a0a0f;border:none;
+                           padding:8px 16px;border-radius:3px;font-family:inherit;
+                           font-size:13px;font-weight:bold;cursor:pointer;
+                           margin-left:6px;">Boot Proxy</button>
+          </div>
         </div>
       </div>
       <div id="bar" style="flex:0 0 auto;padding:3px 14px;font-size:10px;
                   background:#0f0f1a;color:#00aa66;border-top:1px solid #1a1a2e;">
-        [BOOT] project: neptune v0.2.0
+        [BOOT] project: neptune v0.2.1
       </div>
     </div>
   </foreignObject>
@@ -47,7 +59,10 @@
       var bar  = document.getElementById('bar');
       var view = document.getElementById('view');
       var ph   = document.getElementById('ph');
+      var phText = document.getElementById('ph-text');
       var strategiesDiv = document.getElementById('strategies');
+      var inputForm = document.getElementById('input-form');
+      var urlInput = document.getElementById('url-input');
 
       function log(l,msg){
         var d=document.createElement('div');
@@ -64,10 +79,10 @@
       var snapshot = params.get('state');
       var proxyMode = params.has('__nptn');
 
-      if(proxyMode){ ph.textContent='Loading...'; return; }
+      if(proxyMode){ phText.textContent='Loading...'; return; }
 
       log(L.INF,'========================================');
-      log(L.INF,'project: neptune v0.2.0');
+      log(L.INF,'project: neptune v0.2.1');
       log(L.INF,'========================================');
       if(target) log(L.INF,'Target: '+target);
       if(snapshot) log(L.INF,'Snapshot: '+atob(snapshot).length+' bytes');
@@ -85,12 +100,10 @@
 
       async function loadWASM(){
         if(!WASM_JS_B64 || WASM_JS_B64==="{{WASM_JS}}"){
-          log(L.WRN,'WASM JS glue not embedded');
-          return false;
+          log(L.WRN,'WASM JS glue not embedded'); return false;
         }
         if(!WASM_BIN_B64 || WASM_BIN_B64==="{{WASM_BIN}}"){
-          log(L.WRN,'WASM binary not embedded');
-          return false;
+          log(L.WRN,'WASM binary not embedded'); return false;
         }
         try{
           status('[BOOT] Loading WASM kernel...');
@@ -147,7 +160,6 @@
             });
           }
 
-          // Listen for strategy selection
           navigator.serviceWorker.addEventListener('message', function(e){
             if(e.data && e.data.type === 'STRATEGY_SELECTED'){
               strategyStatus([e.data.strategy]);
@@ -166,7 +178,14 @@
 
       // ====== PROXY TUNNEL ======
       async function startProxy(){
-        if(!target){ status('[READY] No target. Use ?url=https://example.com'); return; }
+        if(!target){
+          status('[READY] No target URL');
+          phText.textContent = 'Enter a target URL to start proxying';
+          phText.style.color = '#00ff88';
+          inputForm.style.display = 'block';
+          urlInput.focus();
+          return;
+        }
         status('[PROXY] Tunneling to '+target);
 
         if(navigator.serviceWorker.controller){
@@ -189,6 +208,16 @@
         log(L.INF,'Proxy iframe loaded');
         status('[LIVE] Proxy active — '+target);
       }
+
+      // ====== URL INPUT HANDLER ======
+      window.bootProxy = function(){
+        var val = urlInput.value.trim();
+        if(!val) return;
+        if(!val.startsWith('http')) val = 'https://' + val;
+        var u = new URL(window.location.href);
+        u.searchParams.set('url', val);
+        window.location.href = u.toString();
+      };
 
       // ====== EXPORT STATE ======
       window.exportState = function(){
