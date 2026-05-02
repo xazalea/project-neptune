@@ -11,7 +11,10 @@
       "Exec(sleep)",
       "Exec(timeout)",
       "Exec(cat)",
-      "Exec(true)"
+      "Exec(true)",
+      "Exec(head)",
+      "Exec(tail)",
+      "Exec(ls)"
     ]
   }
 }

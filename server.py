@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-project: neptune — Local Dev Server + Friendly Proxy
-No external APIs. Serves static files and handles proxy requests locally.
+project: neptune — Local Dev Server + Friendly Proxy + WebRTC Signaling
+No external APIs. Serves static files, proxies requests, and handles WebRTC signaling.
 """
 
 import http.server
@@ -11,17 +11,23 @@ import urllib.parse
 import ssl
 import sys
 import os
+import json
+import threading
+import time
 
 PORT = 8080
 PROXY_PATH = "/proxy"
+SIGNAL_PATH = "/signal"
+
+# In-memory signal store for WebRTC
+signals = {}
+signal_lock = threading.Lock()
 
 class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        # Clean logs
         print(f"[{self.log_date_time_string()}] {args[0]} {args[1]}")
 
     def end_headers(self):
-        # Always allow CORS for local dev
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "*")
@@ -37,8 +43,10 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == PROXY_PATH:
             self._handle_proxy(parsed.query)
             return
+        if parsed.path == SIGNAL_PATH:
+            self._handle_signal_get(parsed.query)
+            return
 
-        # Serve static files
         super().do_GET()
 
     def do_POST(self):
@@ -48,6 +56,9 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length) if content_length else b""
             self._handle_proxy(parsed.query, body)
+            return
+        if parsed.path == SIGNAL_PATH:
+            self._handle_signal_post()
             return
 
         super().do_GET()
@@ -76,7 +87,6 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
                 data=body
             )
 
-            # Disable SSL verification for testing
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
@@ -100,20 +110,69 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
 <p style="color:#888;">Target: {target}</p>
 </body></html>""".encode())
 
+    def _handle_signal_get(self, query):
+        """Long-poll for WebRTC signals."""
+        params = urllib.parse.parse_qs(query)
+        peer_id = params.get("peer", [None])[0]
+        if not peer_id:
+            self.send_response(400)
+            self.end_headers()
+            return
+
+        # Wait up to 30s for a signal
+        start = time.time()
+        while time.time() - start < 30:
+            with signal_lock:
+                if peer_id in signals and signals[peer_id]:
+                    signal = signals[peer_id].pop(0)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(signal).encode())
+                    return
+            time.sleep(0.5)
+
+        # Timeout — return empty
+        self.send_response(204)
+        self.end_headers()
+
+    def _handle_signal_post(self):
+        """Post a WebRTC signal."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+        data = json.loads(body)
+
+        target_peer = data.get("target")
+        if not target_peer:
+            self.send_response(400)
+            self.end_headers()
+            return
+
+        with signal_lock:
+            if target_peer not in signals:
+                signals[target_peer] = []
+            signals[target_peer].append(data)
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"ok":true}')
+
 
 def run():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     with socketserver.TCPServer(("", PORT), NeptuneHandler) as httpd:
-        print(f"=" * 50)
+        print(f"=" * 60)
         print(f"  project: neptune — Local Dev Server")
         print(f"  http://localhost:{PORT}/")
-        print(f"  Proxy endpoint: http://localhost:{PORT}{PROXY_PATH}?url=...")
-        print(f"=" * 50)
+        print(f"  Proxy:   http://localhost:{PORT}{PROXY_PATH}?url=...")
+        print(f"  Signal:  http://localhost:{PORT}{SIGNAL_PATH}")
+        print(f"=" * 60)
         print()
         print(f"  Quick start:")
         print(f"    1. Build:    python3 build.py")
         print(f"    2. Open:     http://localhost:{PORT}/neptune.svg?url=https://example.com")
-        print(f"=" * 50)
+        print(f"=" * 60)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

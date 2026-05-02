@@ -1,40 +1,32 @@
 /**
- * Neptune WASM Unikernel
- * Core logic kernel for request transformation, routing, and state management.
- * Compiled to WASM and executed in the browser via the Service Worker bridge.
+ * project: neptune — WASM Unikernel Kernel
+ * DOM AST parser, resource graph, tracker stripping, HTML transformation.
  */
 
 use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
-use js_sys::{Array, Object, Reflect, Uint8Array};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
-// Initialize panic hook for debugging
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
-    console_log("project: neptune v0.1.0 initialized");
+    console_log("project: neptune v0.1.0 kernel initialized");
 }
 
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
-    #[wasm_bindgen(js_namespace = console, js_name = log)]
-    fn log_u32(a: u32);
     #[wasm_bindgen(js_namespace = console, js_name = error)]
     fn console_error(s: &str);
 }
 
-fn console_log(msg: &str) {
-    log(msg);
-}
+fn console_log(msg: &str) { log(msg); }
 
 // ==========================
-// Global Kernel State
+// Kernel State
 // ==========================
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -45,6 +37,8 @@ pub struct KernelState {
     pub vfs_cache: HashMap<String, VfsEntry>,
     pub proxy_rules: Vec<ProxyRule>,
     pub cors_strategy: String,
+    pub resource_graph: ResourceGraph,
+    pub tracker_blocklist: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -62,24 +56,29 @@ pub struct ProxyRule {
     pub headers: HashMap<String, String>,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ResourceGraph {
+    pub nodes: Vec<ResourceNode>,
+    pub edges: Vec<ResourceEdge>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProxyRequest {
-    pub method: String,
+pub struct ResourceNode {
+    pub id: String,
     pub url: String,
-    pub headers: HashMap<String, String>,
-    pub body: Option<Vec<u8>>,
+    pub kind: String, // "html", "css", "js", "img", "xhr", "ws", "tracker"
+    pub size: usize,
+    pub transformed: bool,
+    pub blocked: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProxyResponse {
-    pub status: u16,
-    pub status_text: String,
-    pub headers: HashMap<String, String>,
-    pub body: Vec<u8>,
-    pub transformed: bool,
+pub struct ResourceEdge {
+    pub from: String,
+    pub to: String,
+    pub rel: String, // "script", "link", "xhr", "iframe"
 }
 
-// Thread-safe global state using Mutex
 static KERNEL_STATE: Lazy<Mutex<KernelState>> = Lazy::new(|| {
     Mutex::new(KernelState {
         target_url: None,
@@ -87,12 +86,23 @@ static KERNEL_STATE: Lazy<Mutex<KernelState>> = Lazy::new(|| {
         active_sessions: Vec::new(),
         vfs_cache: HashMap::new(),
         proxy_rules: Vec::new(),
-        cors_strategy: String::from("proxy"),
+        cors_strategy: String::from("auto"),
+        resource_graph: ResourceGraph::default(),
+        tracker_blocklist: default_tracker_list(),
     })
 });
 
+fn default_tracker_list() -> Vec<String> {
+    vec![
+        "google-analytics", "googletagmanager", "doubleclick",
+        "facebook", "fbcdn", "twitter", "analytics",
+        "tracker", "pixel", "beacon", "segment",
+        "mixpanel", "amplitude", "hotjar", "gtag",
+    ].into_iter().map(|s| s.to_string()).collect()
+}
+
 // ==========================
-// WASM Exports (JS Bridge)
+// WASM Exports
 // ==========================
 
 #[wasm_bindgen]
@@ -108,63 +118,241 @@ impl NeptuneKernel {
         Self { heap_size: 0 }
     }
 
-    /// Set the active proxy target URL
     pub fn set_target(&mut self, url: &str) {
         let mut state = KERNEL_STATE.lock().unwrap();
         state.target_url = Some(url.to_string());
-        console_log(&format!("[KERNEL] Target set: {}", url));
+        console_log(&format!("[KERNEL] Target: {}", url));
     }
 
-    /// Get current target URL
     pub fn get_target(&self) -> Option<String> {
         let state = KERNEL_STATE.lock().unwrap();
         state.target_url.clone()
     }
 
-    /// Process a proxy request through the kernel
-    pub fn process_request(&mut self, request_json: &str) -> Result<String, JsValue> {
-        let request: ProxyRequest = serde_json::from_str(request_json)
-            .map_err(|e| JsValue::from_str(&format!("Parse error: {}", e)))?;
+    // ==========================
+    // DOM AST Processing
+    // ==========================
 
+    /// Parse HTML into structured nodes, build resource graph
+    pub fn parse_dom(&mut self, html: &str, base_url: &str) -> Result<String, JsValue> {
         let mut state = KERNEL_STATE.lock().unwrap();
         state.request_count += 1;
         let count = state.request_count;
         drop(state);
 
-        console_log(&format!("[KERNEL] Request #{}: {} {}", count, request.method, request.url));
+        console_log(&format!("[KERNEL] DOM parse #{}: {} bytes", count, html.len()));
 
-        // Transform the request
-        let transformed = transform_request(&request)?;
+        let mut graph = ResourceGraph::default();
+        let mut transformed = html.to_string();
 
-        // Return as JSON
-        serde_json::to_string(&transformed)
-            .map_err(|e| JsValue::from_str(&format!("Serialize error: {}", e)))
+        // Parse with tl
+        match tl::parse(html, tl::ParserOptions::default()) {
+            Ok(dom) => {
+                // Walk nodes and extract resources
+                for node in dom.nodes() {
+                    if let Some(tag) = node.as_tag() {
+                        let name = tag.name().as_utf8_str();
+                        match name.as_ref() {
+                            "script" => {
+                                if let Some(Some(src)) = tag.attributes().get("src") {
+                                    let url = src.as_utf8_str().to_string();
+                                    let id = format!("script-{}", graph.nodes.len());
+                                    graph.nodes.push(ResourceNode {
+                                        id, url, kind: "js".to_string(),
+                                        size: 0, transformed: false, blocked: false,
+                                    });
+                                }
+                            }
+                            "link" => {
+                                if let Some(Some(rel)) = tag.attributes().get("rel") {
+                                    if rel.as_utf8_str().contains("stylesheet") {
+                                        if let Some(Some(href)) = tag.attributes().get("href") {
+                                            let url = href.as_utf8_str().to_string();
+                                            let id = format!("css-{}", graph.nodes.len());
+                                            graph.nodes.push(ResourceNode {
+                                                id, url, kind: "css".to_string(),
+                                                size: 0, transformed: false, blocked: false,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            "img" => {
+                                if let Some(Some(src)) = tag.attributes().get("src") {
+                                    let url = src.as_utf8_str().to_string();
+                                    let id = format!("img-{}", graph.nodes.len());
+                                    graph.nodes.push(ResourceNode {
+                                        id, url, kind: "img".to_string(),
+                                        size: 0, transformed: false, blocked: false,
+                                    });
+                                }
+                            }
+                            "iframe" => {
+                                if let Some(Some(src)) = tag.attributes().get("src") {
+                                    let url = src.as_utf8_str().to_string();
+                                    let id = format!("iframe-{}", graph.nodes.len());
+                                    graph.nodes.push(ResourceNode {
+                                        id, url, kind: "iframe".to_string(),
+                                        size: 0, transformed: false, blocked: false,
+                                    });
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                console_log(&format!("[KERNEL] Found {} resources", graph.nodes.len()));
+
+                // Check for trackers
+                for node in graph.nodes.iter_mut() {
+                    let lower = node.url.to_lowercase();
+                    let trackers = default_tracker_list();
+                    for tracker in &trackers {
+                        if lower.contains(tracker) {
+                            node.blocked = true;
+                            node.kind = "tracker".to_string();
+                            console_log(&format!("[KERNEL] Blocked tracker: {}", node.url));
+                            break;
+                        }
+                    }
+                }
+
+                // Store graph
+                let mut state = KERNEL_STATE.lock().unwrap();
+                state.resource_graph = graph.clone();
+                drop(state);
+
+                serde_json::to_string(&graph)
+                    .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
+            }
+            Err(e) => {
+                console_log(&format!("[KERNEL] Parse error: {}", e));
+                serde_json::to_string(&graph)
+                    .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
+            }
+        }
     }
 
-    /// Transform HTML content for proxy routing
-    pub fn transform_html(&mut self, html: &str, target_url: &str, origin: &str) -> String {
-        console_log("[KERNEL] Transforming HTML response");
-        let transformed = html_transform_engine(html, target_url, origin);
-        self.heap_size += transformed.len();
-        transformed
-    }
-
-    /// Apply proxy rules to a URL
-    pub fn apply_rules(&self, url: &str) -> String {
+    /// Check if URL is a known tracker
+    pub fn is_tracker(&self, url: &str) -> bool {
         let state = KERNEL_STATE.lock().unwrap();
-        let mut result = url.to_string();
+        let lower = url.to_lowercase();
+        for tracker in &state.tracker_blocklist {
+            if lower.contains(tracker) { return true; }
+        }
+        false
+    }
 
-        for rule in &state.proxy_rules {
-            if result.contains(&rule.pattern) {
-                result = result.replace(&rule.pattern, &rule.rewrite_to);
-                console_log(&format!("[KERNEL] Rule applied: {} -> {}", rule.pattern, result));
+    /// Transform HTML with resource graph awareness
+    pub fn transform_html_advanced(&mut self, html: &str, target_url: &str, origin: &str, proxy_prefix: &str) -> String {
+        console_log("[KERNEL] Advanced HTML transformation");
+
+        let mut graph = ResourceGraph::default();
+
+        // Parse and build graph
+        if let Ok(dom) = tl::parse(html, tl::ParserOptions::default()) {
+            for node in dom.nodes() {
+                if let Some(tag) = node.as_tag() {
+                    let name = tag.name().as_utf8_str();
+                    let name_str = name.as_ref();
+                    match name_str {
+                        "script" | "link" | "img" | "iframe" | "video" | "audio" | "source" => {
+                            let attr = if name_str == "link" { "href" } else { "src" };
+                            if let Some(Some(val)) = tag.attributes().get(attr) {
+                                let url = val.as_utf8_str().to_string();
+                                let id = format!("{}-{}", name_str, graph.nodes.len());
+                                let kind = if name_str == "link" { "css" } else { name_str };
+                                let blocked = self.is_tracker(&url);
+                                graph.nodes.push(ResourceNode {
+                                    id, url, kind: kind.to_string(),
+                                    size: 0, transformed: true, blocked,
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 
+        let blocked_count = graph.nodes.iter().filter(|n| n.blocked).count();
+        console_log(&format!("[KERNEL] {} resources, {} blocked", graph.nodes.len(), blocked_count));
+
+        // Transform with knowledge of blocked resources
+        let mut out = html.to_string();
+
+        // Rewrite URLs to proxy prefix
+        let target_origin = match url_parse(target_url) {
+            Some(t) => t.origin,
+            None => return html.to_string(),
+        };
+
+        let to_proxy = |u: &str| -> String {
+            if u.starts_with("http") { format!("{}?url={}", proxy_prefix, b64_url_encode(u)) }
+            else if u.starts_with("//") { format!("{}?url={}", proxy_prefix, b64_url_encode(&format!("https:{}", u))) }
+            else if u.starts_with("/") { format!("{}?url={}", proxy_prefix, b64_url_encode(&format!("{}{}", target_origin, u))) }
+            else if u.starts_with('#') || u.starts_with("javascript:") || u.starts_with("mailto:") { u.to_string() }
+            else { format!("{}?url={}", proxy_prefix, b64_url_encode(&resolve_url(u, target_url))) }
+        };
+
+        // Block trackers by replacing with empty/noop
+        for node in &graph.nodes {
+            if node.blocked {
+                match node.kind.as_str() {
+                    "script" => {
+                        // Replace script tags pointing to trackers with comment
+                        let pattern = format!("<script[^>]*src=[\"']{}[\"'][^>]*></script>", regex::escape(&node.url));
+                        out = regex_replace_all(&pattern, &out, "<!-- neptune: blocked tracker -->");
+                    }
+                    "img" => {
+                        // Replace tracker pixels with 1x1 transparent
+                        let pattern = format!("<img[^>]*src=[\"']{}[\"'][^>]*/?>", regex::escape(&node.url));
+                        out = regex_replace_all(&pattern, &out, "<img src=\"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7\" alt=\"\" />");
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Rewrite remaining URLs
+        out = out.replace(&format!("href=\"{}\"", target_url), &format!("href=\"{}\"", proxy_prefix));
+        out = rewrite_attr(&out, "href", &to_proxy, &target_origin);
+        out = rewrite_attr(&out, "src", &to_proxy, &target_origin);
+        out = rewrite_attr(&out, "action", &to_proxy, &target_origin);
+
+        // CSS url() rewriting
+        out = rewrite_css_urls(&out, proxy_prefix, &target_origin);
+
+        self.heap_size += out.len();
+        out
+    }
+
+    /// Apply proxy rules
+    pub fn apply_rules(&self, url: &str) -> String {
+        let state = KERNEL_STATE.lock().unwrap();
+        let mut result = url.to_string();
+        for rule in &state.proxy_rules {
+            if result.contains(&rule.pattern) {
+                result = result.replace(&rule.pattern, &rule.rewrite_to);
+            }
+        }
         result
     }
 
-    /// VFS: Write file to virtual filesystem
+    pub fn add_rule(&mut self, pattern: &str, rewrite_to: &str) {
+        let mut state = KERNEL_STATE.lock().unwrap();
+        state.proxy_rules.push(ProxyRule {
+            pattern: pattern.to_string(),
+            rewrite_to: rewrite_to.to_string(),
+            headers: HashMap::new(),
+        });
+    }
+
+    // ==========================
+    // VFS
+    // ==========================
+
     pub fn vfs_write(&mut self, path: &str, data: &[u8], permissions: u32) {
         let mut state = KERNEL_STATE.lock().unwrap();
         let entry = VfsEntry {
@@ -175,58 +363,51 @@ impl NeptuneKernel {
         };
         state.vfs_cache.insert(path.to_string(), entry);
         self.heap_size += data.len();
-        console_log(&format!("[KERNEL] VFS write: {} ({} bytes)", path, data.len()));
     }
 
-    /// VFS: Read file from virtual filesystem
     pub fn vfs_read(&self, path: &str) -> Option<Vec<u8>> {
         let state = KERNEL_STATE.lock().unwrap();
         state.vfs_cache.get(path).map(|e| e.data.clone())
     }
 
-    /// VFS: List files in directory
     pub fn vfs_list(&self, prefix: &str) -> Result<String, JsValue> {
         let state = KERNEL_STATE.lock().unwrap();
-        let files: Vec<&str> = state.vfs_cache
-            .keys()
+        let files: Vec<&str> = state.vfs_cache.keys()
             .filter(|k| k.starts_with(prefix))
             .map(|k| k.as_str())
             .collect();
-
         serde_json::to_string(&files)
-            .map_err(|e| JsValue::from_str(&format!("Serialize error: {}", e)))
+            .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
     }
 
-    /// Add a proxy routing rule
-    pub fn add_rule(&mut self, pattern: &str, rewrite_to: &str) {
-        let mut state = KERNEL_STATE.lock().unwrap();
-        state.proxy_rules.push(ProxyRule {
-            pattern: pattern.to_string(),
-            rewrite_to: rewrite_to.to_string(),
-            headers: HashMap::new(),
-        });
-        console_log(&format!("[KERNEL] Rule added: {} -> {}", pattern, rewrite_to));
-    }
+    // ==========================
+    // Strategy
+    // ==========================
 
-    /// Set CORS strategy
-    pub fn set_cors_strategy(&mut self, strategy: &str) {
+    pub fn set_strategy(&mut self, strategy: &str) {
         let mut state = KERNEL_STATE.lock().unwrap();
         state.cors_strategy = strategy.to_string();
-        console_log(&format!("[KERNEL] CORS strategy: {}", strategy));
+        console_log(&format!("[KERNEL] Strategy: {}", strategy));
     }
 
-    /// Serialize entire kernel state for snapshot export
+    pub fn get_strategy(&self) -> String {
+        let state = KERNEL_STATE.lock().unwrap();
+        state.cors_strategy.clone()
+    }
+
+    // ==========================
+    // State Snapshots
+    // ==========================
+
     pub fn serialize_state(&self) -> Result<String, JsValue> {
         let state = KERNEL_STATE.lock().unwrap();
         serde_json::to_string(&*state)
-            .map_err(|e| JsValue::from_str(&format!("Serialize error: {}", e)))
+            .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
     }
 
-    /// Deserialize and restore kernel state from snapshot
     pub fn deserialize_state(&mut self, json: &str) -> Result<(), JsValue> {
         let restored: KernelState = serde_json::from_str(json)
-            .map_err(|e| JsValue::from_str(&format!("Deserialize error: {}", e)))?;
-
+            .map_err(|e| JsValue::from_str(&format!("Deserialize: {}", e)))?;
         let mut state = KERNEL_STATE.lock().unwrap();
         *state = restored;
         self.heap_size = state.vfs_cache.values().map(|e| e.data.len()).sum();
@@ -234,7 +415,15 @@ impl NeptuneKernel {
         Ok(())
     }
 
-    /// Get memory heap statistics
+    pub fn create_snapshot(&self) -> Result<String, JsValue> {
+        let state = KERNEL_STATE.lock().unwrap();
+        let json = serde_json::to_string(&*state)
+            .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))?;
+        let encoded = b64_encode(json.as_bytes());
+        console_log(&format!("[KERNEL] Snapshot: {} bytes -> {} b64", json.len(), encoded.len()));
+        Ok(encoded)
+    }
+
     pub fn heap_stats(&self) -> Result<String, JsValue> {
         let state = KERNEL_STATE.lock().unwrap();
         let stats = HeapStats {
@@ -242,23 +431,11 @@ impl NeptuneKernel {
             vfs_entries: state.vfs_cache.len(),
             request_count: state.request_count,
             active_sessions: state.active_sessions.len(),
+            resource_nodes: state.resource_graph.nodes.len(),
+            blocked_trackers: state.resource_graph.nodes.iter().filter(|n| n.blocked).count(),
         };
-
         serde_json::to_string(&stats)
-            .map_err(|e| JsValue::from_str(&format!("Serialize error: {}", e)))
-    }
-
-    /// Create state snapshot as base64-encoded bytes
-    pub fn create_snapshot(&self) -> Result<String, JsValue> {
-        let state = KERNEL_STATE.lock().unwrap();
-        let json = serde_json::to_string(&*state)
-            .map_err(|e| JsValue::from_str(&format!("Serialize error: {}", e)))?;
-
-        // Encode to base64
-        let bytes = json.as_bytes();
-        let encoded = base64_encode(bytes);
-        console_log(&format!("[KERNEL] Snapshot created: {} bytes -> {} base64", bytes.len(), encoded.len()));
-        Ok(encoded)
+            .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
     }
 }
 
@@ -268,148 +445,65 @@ struct HeapStats {
     vfs_entries: usize,
     request_count: u64,
     active_sessions: usize,
+    resource_nodes: usize,
+    blocked_trackers: usize,
 }
 
 // ==========================
-// Request Transformation
+// HTML Transformation Helpers
 // ==========================
 
-fn transform_request(_req: &ProxyRequest) -> Result<ProxyResponse, JsValue> {
-    // Default response - in a real scenario, this would route through the network layer
-    let mut headers = HashMap::new();
-    headers.insert("X-Neptune-Proxy".to_string(), "v0.1.0".to_string());
-    headers.insert("X-Processed-By".to_string(), "wasm-kernel".to_string());
-
-    Ok(ProxyResponse {
-        status: 200,
-        status_text: "OK".to_string(),
-        headers,
-        body: Vec::new(),
-        transformed: true,
-    })
-}
-
-// ==========================
-// HTML Transformation Engine
-// ==========================
-
-fn html_transform_engine(html: &str, target_url: &str, origin: &str) -> String {
-    let target = match url_parse(target_url) {
-        Some(t) => t,
-        None => return html.to_string(),
-    };
-
-    let base = format!("{}/virtual-root/", origin);
+fn rewrite_attr(html: &str, attr: &str, mapper: &dyn Fn(&str) -> String, _target_origin: &str) -> String {
     let mut result = html.to_string();
 
-    // Insert base tag
-    let base_tag = format!("<base href=\"{}\">", target.origin);
+    // Double-quoted
+    let pattern_dq = format!(r#"{}="([^"]*)""#, attr);
+    result = regex_replace_all_fn(&pattern_dq, &result, |caps: &regex::Captures| {
+        let val = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        format!(r#"{}="{}""#, attr, mapper(val))
+    });
 
-    // Rewrite relative hrefs
-    result = rewrite_attribute(&result, "href", &base, &target.origin);
+    // Single-quoted
+    let pattern_sq = format!(r#"{}='([^']*)'"#, attr);
+    result = regex_replace_all_fn(&pattern_sq, &result, |caps: &regex::Captures| {
+        let val = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        format!(r#"{}="{}""#, attr, mapper(val))
+    });
 
-    // Rewrite relative srcs
-    result = rewrite_attribute(&result, "src", &base, &target.origin);
+    result
+}
 
-    // Rewrite action attributes (forms)
-    result = rewrite_attribute(&result, "action", &base, &target.origin);
+fn rewrite_css_urls(css: &str, proxy_prefix: &str, target_origin: &str) -> String {
+    let re = regex::Regex::new(r#"url\((['"]?)([^'"\)]+)\1\)"#).unwrap();
+    re.replace_all(css, |caps: &regex::Captures| {
+        let val = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+        let mapped = if val.starts_with("http") {
+            format!("{}?url={}", proxy_prefix, b64_url_encode(val))
+        } else if val.starts_with("/") {
+            format!("{}?url={}", proxy_prefix, b64_url_encode(&format!("{}{}", target_origin, val)))
+        } else {
+            val.to_string()
+        };
+        format!("url({})", mapped)
+    }).to_string()
+}
 
-    // Rewrite CSS url() references
-    result = rewrite_css_urls(&result, &base, &target.origin);
-
-    // Inject proxy runtime script
-    let proxy_script = format!(
-        r#"<script>
-(function() {{
-    const base = '{}';
-    const targetOrigin = '{}';
-
-    // Override fetch
-    const origFetch = window.fetch;
-    window.fetch = function(input, init) {{
-        let url = typeof input === 'string' ? input : (input.url || input.toString());
-        if (url.startsWith('http') && !url.includes(location.origin)) {{
-            url = base + encodeURIComponent(url);
-        }} else if (url.startsWith('/') && !url.startsWith('/virtual-root/')) {{
-            url = base + url.substring(1);
-        }}
-        return origFetch(url, init);
-    }};
-
-    // Override XHR
-    const origXhrOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {{
-        if (url.startsWith('http') && !url.includes(location.origin)) {{
-            url = base + encodeURIComponent(url);
-        }} else if (url.startsWith('/') && !url.startsWith('/virtual-root/')) {{
-            url = base + url.substring(1);
-        }}
-        return origXhrOpen.call(this, method, url, async, user, password);
-    }};
-
-    // Rewrite anchor clicks
-    document.addEventListener('click', function(e) {{
-        const a = e.target.closest('a');
-        if (!a) return;
-        const href = a.getAttribute('href');
-        if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {{
-            if (href.startsWith('http') && !href.includes(location.origin)) {{
-                a.href = base + encodeURIComponent(href);
-            }} else if (href.startsWith('/') && !href.startsWith('/virtual-root/')) {{
-                a.href = base + href.substring(1);
-            }}
-        }}
-    }});
-}})();
-</script>"#,
-        base, target.origin
-    );
-
-    // Inject base tag and script
-    if result.contains("</head>") {
-        result = result.replacen("</head>", &format!("{}\n{}\n</head>", base_tag, proxy_script), 1);
-    } else if result.contains("<body") {
-        result = result.replacen("<body", &format!("{}\n<body", proxy_script), 1);
-    } else {
-        result = format!("{}\n{}", proxy_script, result);
+fn regex_replace_all(pattern: &str, text: &str, replacement: &str) -> String {
+    match regex::Regex::new(pattern) {
+        Ok(re) => re.replace_all(text, replacement).to_string(),
+        Err(_) => text.to_string(),
     }
-
-    result
 }
 
-fn rewrite_attribute(html: &str, attr: &str, base: &str, target_origin: &str) -> String {
-    let mut result = html.to_string();
-
-    // Rewrite absolute URLs to target origin
-    let abs_pattern = format!(r#"{}="{}""#, attr, target_origin);
-    let abs_replacement = format!(r#"{}="{}""#, attr, base);
-    result = result.replace(&abs_pattern, &abs_replacement);
-
-    // Rewrite absolute paths
-    let path_pattern = format!(r#"{}="/""#, attr);
-    let path_replacement = format!(r#"{}="{}""#, attr, base);
-    result = result.replace(&path_pattern, &path_replacement);
-
-    result
-}
-
-fn rewrite_css_urls(css: &str, base: &str, target_origin: &str) -> String {
-    let mut result = css.to_string();
-
-    // Simple string replacement for url() patterns
-    let abs_pattern = format!("url({})", target_origin);
-    let abs_replacement = format!("url({})", base);
-    result = result.replace(&abs_pattern, &abs_replacement);
-
-    let path_pattern = "url(/";
-    let path_replacement = format!("url({}", base);
-    result = result.replace(path_pattern, &path_replacement);
-
-    result
+fn regex_replace_all_fn(pattern: &str, text: &str, f: impl Fn(&regex::Captures) -> String) -> String {
+    match regex::Regex::new(pattern) {
+        Ok(re) => re.replace_all(text, f).to_string(),
+        Err(_) => text.to_string(),
+    }
 }
 
 // ==========================
-// URL Parsing Helper
+// URL Helpers
 // ==========================
 
 #[derive(Debug)]
@@ -423,70 +517,46 @@ struct ParsedUrl {
 }
 
 fn url_parse(url: &str) -> Option<ParsedUrl> {
-    // Simple URL parser without regex dependency
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return None;
     }
-
     let protocol_end = url.find("://")?;
     let protocol = url[..protocol_end].to_string();
-
     let rest = &url[protocol_end + 3..];
     let path_start = rest.find('/').unwrap_or(rest.len());
     let host = rest[..path_start].to_string();
     let origin = format!("{}://{}", protocol, host);
-
     let (pathname, search) = if path_start < rest.len() {
-        let path_and_query = &rest[path_start..];
-        if let Some(query_start) = path_and_query.find('?') {
-            (path_and_query[..query_start].to_string(), path_and_query[query_start..].to_string())
+        let pq = &rest[path_start..];
+        if let Some(qs) = pq.find('?') {
+            (pq[..qs].to_string(), pq[qs..].to_string())
         } else {
-            (path_and_query.to_string(), String::new())
+            (pq.to_string(), String::new())
         }
     } else {
         ("/".to_string(), String::new())
     };
-
     Some(ParsedUrl { origin, protocol, host, pathname, search })
 }
 
-// ==========================
-// Base64 Encoding
-// ==========================
-
-const BASE64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-fn base64_encode(input: &[u8]) -> String {
-    let mut result = String::with_capacity((input.len() + 2) / 3 * 4);
-    let mut i = 0;
-
-    while i + 2 < input.len() {
-        let b0 = input[i] as usize;
-        let b1 = input[i + 1] as usize;
-        let b2 = input[i + 2] as usize;
-
-        result.push(BASE64_CHARS[(b0 >> 2) & 0x3F] as char);
-        result.push(BASE64_CHARS[((b0 << 4) | (b1 >> 4)) & 0x3F] as char);
-        result.push(BASE64_CHARS[((b1 << 2) | (b2 >> 6)) & 0x3F] as char);
-        result.push(BASE64_CHARS[b2 & 0x3F] as char);
-
-        i += 3;
+fn resolve_url(rel: &str, base: &str) -> String {
+    match url::Url::parse(base) {
+        Ok(base_url) => {
+            match base_url.join(rel) {
+                Ok(u) => u.to_string(),
+                Err(_) => format!("{}{}", base.trim_end_matches('/'), rel),
+            }
+        }
+        Err(_) => format!("{}{}", base.trim_end_matches('/'), rel),
     }
+}
 
-    if i + 1 == input.len() {
-        let b0 = input[i] as usize;
-        result.push(BASE64_CHARS[(b0 >> 2) & 0x3F] as char);
-        result.push(BASE64_CHARS[(b0 << 4) & 0x3F] as char);
-        result.push('=');
-        result.push('=');
-    } else if i + 2 == input.len() {
-        let b0 = input[i] as usize;
-        let b1 = input[i + 1] as usize;
-        result.push(BASE64_CHARS[(b0 >> 2) & 0x3F] as char);
-        result.push(BASE64_CHARS[((b0 << 4) | (b1 >> 4)) & 0x3F] as char);
-        result.push(BASE64_CHARS[(b1 << 2) & 0x3F] as char);
-        result.push('=');
-    }
+fn b64_url_encode(s: &str) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(s)
+}
 
-    result
+fn b64_encode(data: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(data)
 }

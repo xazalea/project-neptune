@@ -1,104 +1,163 @@
 # project: neptune — WASM Unikernel Proxy
 
-A browser-based proxy/unikernel that bootstraps from a single SVG file. No external APIs.
+A browser-based proxy/unikernel that bootstraps from a **single SVG file**. Zero external dependencies in the cartridge. Multi-strategy CORS bypass.
 
 ## Architecture
 
 ```
-+---------------------------------------------------------+
-|  neptune.svg (cartridge)                                |
-|  ├─ Terminal UI (SVG foreignObject)                     |
-|  ├─ Embedded WASM binary (base64)                       |
-|  ├─ Bootloader script                                   |
-|  │   ├─ Parse ?url= target                              |
-|  │   ├─ Register sw.js as Service Worker              |
-|  │   ├─ Load WASM kernel from embedded data             |
-|  │   └─ Create iframe for proxied viewport              |
-|  └─ __nptn=1 proxy mode (iframe content)              |
-+---------------------------------------------------------+
-                              |
-  +---------------------------v---------------------------+
-  |  sw.js — Service Worker Kernel                        |
-  |  ├─ Intercepts all fetch() within scope                |
-  |  ├─ Routes to /proxy?url= (local server)              |
-  |  ├─ Transforms HTML (link rewriting)                  |
-  |  └─ Injects runtime to intercept XHR/fetch            |
-  +---------------------------+---------------------------+
-                              |
-  +---------------------------v---------------------------+
-  |  server.py — Local Dev Server + Friendly Proxy         |
-  |  ├─ Serves static files                                 |
-  |  ├─ /proxy?url=... fetches arbitrary URLs             |
-  |  └─ Adds CORS headers so SW can call it               |
-  +---------------------------------------------------------+
+┌─────────────────────────────────────────────────────────────────┐
+│  neptune.svg (single-file cartridge, ~4MB)                        │
+│  ├─ Terminal UI (SVG foreignObject)                              │
+│  ├─ SW kernel code     — embedded as base64 blob                 │
+│  ├─ WASM JS glue       — embedded as base64 blob                 │
+│  ├─ WASM binary        — embedded as base64 blob (Rust kernel)   │
+│  └─ Bootloader script                                              │
+│      ├─ Parse ?url= target                                        │
+│      ├─ Decode SW → blob URL → register as Service Worker        │
+│      ├─ Decode WASM JS → blob URL → dynamic import               │
+│      ├─ Decode WASM binary → Response → init kernel               │
+│      └─ Create iframe for proxied viewport                       │
+└─────────────────────────────────────────────────────────────────┘
+                                   │
+         ┌─────────────────────────┼─────────────────────────┐
+         ▼                         ▼                         ▼
+  ┌─────────────┐          ┌─────────────┐           ┌─────────────┐
+  │ Extension   │          │ iframe      │           │ WebRTC P2P  │
+  │ (no CORS)   │          │ Relay       │           │ Mesh        │
+  │             │          │ (if frame   │           │ (peer node) │
+  │ chrome.ext  │          │  allowed)   │           │             │
+  └─────────────┘          └─────────────┘           └─────────────┘
+         │                         │                         │
+         └─────────────────────────┼─────────────────────────┘
+                                   ▼
+                    ┌─────────────────────────────┐
+                    │  Service Worker Kernel        │
+                    │  ├─ Strategy auto-detection   │
+                    │  ├─ Fetch interception        │
+                    │  ├─ HTML transformation       │
+                    │  │   ├─ URL rewriting          │
+                    │  │   ├─ Tracker stripping    │
+                    │  │   └─ Runtime injection     │
+                    │  └─ WebRTC signaling          │
+                    └─────────────┬───────────────┘
+                                  │
+                    ┌─────────────┴─────────────┐
+                    ▼                           ▼
+         ┌──────────────────┐      ┌──────────────────┐
+         │ Local Proxy      │      │ Hosted Proxy     │
+         │ (python3 server)│      │ (configurable)   │
+         │ /proxy?url=...   │      │                  │
+         └──────────────────┘      └──────────────────┘
 ```
 
 ## Quick Start
 
 ```bash
-# 1. Build the cartridge
+# Build the cartridge (embeds SW + WASM JS + WASM binary into SVG)
 python3 build.py
 
-# 2. Start the local server (also acts as proxy)
+# Start local server + proxy + WebRTC signaling
 python3 server.py
 
-# 3. Open in browser
+# Open in browser
 http://localhost:8080/neptune.svg?url=https://example.com
 ```
 
-Or open `http://localhost:8080/` for a landing page with a URL input.
+Or open `http://localhost:8080/` for a landing page.
 
-## How It Works
+## Multi-Strategy CORS Bypass
 
-### Phase 1: The Bootloader (SVG Shell)
+The Service Worker automatically tries strategies in priority order:
 
-`neptune.svg` is the cartridge. It contains:
-- A terminal-style UI rendered in SVG `<foreignObject>`
-- The WASM binary embedded as a base64 string
-- A boot script that:
-  1. Reads `?url=` from `window.location.search`
-  2. Registers `sw.js` as a Service Worker (scope: `./`)
-  3. Loads the WASM kernel via dynamic `import()` + `Response` object
-  4. Creates an iframe with `?__nptn=1&url=...` for the proxy viewport
+| Priority | Strategy | Description | Requirements |
+|----------|----------|-------------|--------------|
+| 1 | **Extension** | Direct fetch with `<all_urls>` permission | Browser extension |
+| 2 | **iframe Relay** | postMessage to same-origin iframe | Target allows framing |
+| 3 | **WebRTC P2P** | Data channel to peer with internet | Peer node + signaling |
+| 4 | **Local Proxy** | `/proxy?url=...` endpoint on localhost | `python3 server.py` |
+| 5 | **Hosted Proxy** | Configurable remote proxy endpoint | Hosted proxy server |
 
-### Phase 2: Service Worker Kernel
+Configure manually:
+```javascript
+navigator.serviceWorker.controller.postMessage({
+  type: 'SET_STRATEGY', strategy: 'webrtc'  // or 'extension', 'iframe', 'local', 'hosted'
+});
+navigator.serviceWorker.controller.postMessage({
+  type: 'SET_PROXY', url: 'https://your-proxy.com/fetch?url='
+});
+```
 
-`sw.js` intercepts all network requests:
-- Detects proxy iframe mode via `__nptn` query param or referrer
-- Routes external requests to the local `/proxy?url=...` endpoint
-- Transforms HTML responses:
-  - Rewrites `href`, `src`, `action` attributes to proxy URLs
-  - Rewrites CSS `url()` references
-  - Injects a runtime script to intercept `fetch()` and `XMLHttpRequest`
+## What the WASM Kernel Does
 
-### Phase 3: WASM Unikernel
+The Rust-compiled WASM kernel (`src/lib.rs`) provides:
 
-`src/lib.rs` compiled to WASM:
-- HTML transformation engine (Rust-powered, for performance)
-- Proxy routing rules engine
-- Virtual filesystem cache (`vfs_cache` in memory)
-- State snapshot serialization to base64
-
-### Phase 4: Local Friendly Proxy
-
-`server.py` is the "friendly proxy" — a tiny Python HTTP server with:
-- Static file serving
-- `/proxy?url=...` endpoint that fetches arbitrary URLs
-- CORS headers so the SW can call it from any origin
-- No external APIs or third-party services
+- **DOM AST Parser** (`tl` crate): Parses HTML into structured resource nodes
+- **Resource Graph**: Tracks scripts, stylesheets, images, iframes, XHRs
+- **Tracker Stripping**: Blocks known analytics/trackers (GA, GTM, Facebook, etc.)
+- **URL Rewriting**: Proxies all resources through `/proxy?url=...`
+- **State Snapshots**: Serializes entire heap to base64 for persistence
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `neptune.svg` | **Cartridge** — Generated by build.py, embeds WASM |
-| `template.svg` | Source template for the cartridge |
-| `sw.js` | Service Worker kernel (scope hijacking + proxy routing) |
-| `src/lib.rs` | Rust WASM unikernel core |
-| `build.py` | Build script: compiles Rust, embeds WASM into SVG |
-| `server.py` | Local dev server + friendly proxy |
-| `index.html` | Landing page with URL input |
-| `Cargo.toml` | Rust build configuration |
+| File | Size | Purpose | Deploy? |
+|------|------|---------|---------|
+| `neptune.svg` | ~4MB | **Cartridge** — single self-contained file | **Yes** |
+| `template.svg` | 6KB | Build source for the cartridge | No |
+| `sw.js` | 15KB | Service Worker source (embedded in SVG) | Source only |
+| `src/lib.rs` | 20KB | Rust WASM kernel (DOM parser, tracker stripper) | Source only |
+| `build.py` | 3KB | Build script — compiles + embeds everything | Source only |
+| `server.py` | 5KB | Local dev server + proxy + WebRTC signaling | Optional |
+| `index.html` | 3KB | Landing page with URL input | Optional |
+
+## Deployment
+
+### The Cartridge (`neptune.svg`)
+
+The SVG is **completely self-contained**. It can be served from any static host.
+
+**Important:** `raw.githubusercontent.com` adds a `sandbox` CSP that **blocks Service Workers**. Use one of these:
+
+**GitHub Pages:**
+```bash
+git checkout -b gh-pages
+git add neptune.svg index.html server.py
+git commit -m "deploy"
+git push origin gh-pages
+# Enable Pages in repo settings
+```
+
+**jsDelivr CDN** (correct MIME types + CORS):
+```
+https://cdn.jsdelivr.net/gh/<user>/<repo>@main/neptune.svg?url=https://example.com
+```
+
+### The Proxy Endpoint
+
+The proxy requires a server because browsers block cross-origin `fetch()` (CORS).
+
+| Option | Setup |
+|--------|-------|
+| **Local** | `python3 server.py` — runs on localhost:8080 |
+| **Hosted** | `postMessage({type:'SET_PROXY', url:'...'})` |
+| **Extension** | Package as browser extension — no proxy needed |
+| **WebRTC** | Connect to peer node via `/signal` endpoint |
+
+## State Snapshots
+
+The WASM kernel serializes its entire heap to base64:
+
+```javascript
+// Inside the SVG context (DevTools console)
+const urlWithState = window.exportState();
+// Produces: neptune.svg?url=...&state=BASE64...
+```
+
+This persists:
+- VFS entries (`/etc`, `/var`, `/home`)
+- Request counts
+- Proxy rules
+- Resource graph
+- Sessions
 
 ## Build Requirements
 
@@ -106,27 +165,9 @@ Or open `http://localhost:8080/` for a landing page with a URL input.
 - Python 3
 - Rust toolchain
 
-## State Snapshots
-
-The WASM kernel can serialize its entire heap to base64:
-
-```javascript
-// Inside the SVG context
-const urlWithState = window.exportState();
-// Produces: neptune.svg?url=...&state=BASE64...
-```
-
-The snapshot persists VFS entries, request counts, proxy rules, and sessions across refreshes.
-
-## CORS Strategy
-
-Since this is a fully local system, CORS is solved by the local proxy server (`server.py`). The Service Worker routes all external requests through `http://localhost:PORT/proxy?url=...` which adds the necessary `Access-Control-Allow-Origin: *` headers.
-
-For a true serverless deployment, package as a **browser extension** (manifest included in the repo).
-
-## Security Notes
+## Security
 
 - Service Workers require HTTPS or localhost
-- The proxy server fetches arbitrary URLs — run only locally
-- HTML transformation modifies third-party content; sanitize inputs
-- Extension mode gains `<all_urls>` permission for cross-origin access
+- The proxy server fetches arbitrary URLs — run only locally or behind auth
+- Extension mode has full cross-origin access — use responsibly
+- Tracker stripping blocks known analytics domains but is not exhaustive
