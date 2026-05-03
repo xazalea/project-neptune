@@ -8,23 +8,44 @@
 
   <rect width="1200" height="800" fill="url(#bg)" rx="4"/>
 
-  <foreignObject x="0" y="0" width="1200" height="800">
+  <foreignObject x="0" y="0" width="1200" height="800">    <style>
+      @keyframes __nptn_fadein { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+      @keyframes __nptn_pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+      @keyframes __nptn_spin { 0% { transform:rotate(0deg); } 100% { transform:rotate(360deg); } }
+      @keyframes __nptn_slidein { from { transform:translateX(-10px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+      .nptn-btn { transition: all .15s ease; }
+      .nptn-btn:hover { background:#222 !important; border-color:#00ff88 !important; color:#00ff88 !important; }
+      .nptn-btn:active { transform: scale(0.96); }
+      .nptn-tab { transition: all .12s ease; }
+      .nptn-tab:hover { background:#222 !important; }
+      .nptn-tab.active { background:#1a3a2e !important; border-color:#004d33 !important; }
+      #url-bar::placeholder { color:#444; }
+      #url-bar:focus { border-color:#00ff88 !important; box-shadow: 0 0 0 1px rgba(0,255,136,0.15); }
+      .nptn-toast { animation: __nptn_fadein 0.25s ease-out; }
+    </style>
     <div xmlns="http://www.w3.org/1999/xhtml" id="root"
          style="width:100%;height:100%;display:flex;flex-direction:column;
                 font-family:'SF Mono','Fira Code',monospace,Consolas,monospace;
-                color:#ccc;overflow:hidden;background:#0a0a0f;">
+                color:#ccc;overflow:hidden;background:#0a0a0f;position:relative;
+">
+
+      <!-- ====== BOOT OVERLAY ====== -->
+      <div id="boot-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:#0a0a0f;z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;transition:opacity 0.4s;">
+        <div style="width:40px;height:40px;border:3px solid #1a1a2e;border-top-color:#00ff88;border-radius:50%;animation:__nptn_spin 0.8s linear infinite;"></div>
+        <div id="boot-status" style="margin-top:16px;color:#555;font-size:11px;max-width:300px;text-align:center;line-height:1.5;">Initializing Neptune kernel...</div>
+      </div>
 
       <!-- ====== CHROME BAR ====== -->
       <div id="chrome" style="flex:0 0 auto;display:flex;align-items:center;
                   padding:4px 8px;background:#111;border-bottom:1px solid #1a1a2e;gap:4px;min-height:38px;">
         <!-- Nav -->
         <div style="display:flex;gap:2px;flex-shrink:0;">
-          <button id="btn-back" title="Back (Alt+←)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">←</button>
-          <button id="btn-forward" title="Forward (Alt+→)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">→</button>
-          <button id="btn-refresh" title="Refresh (F5)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">↻</button>
-          <button id="btn-home" title="Home" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">⌂</button>
-          <button id="btn-undo" title="Reopen closed tab (Ctrl+Shift+T)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">↶</button>
-          <button id="btn-duplicate" title="Duplicate tab" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">⧉</button>
+          <button id="btn-back" title="Back (Alt+←)" class="nptn-btn" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">←</button>
+          <button id="btn-forward" title="Forward (Alt+→)" class="nptn-btn" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">→</button>
+          <button id="btn-refresh" title="Refresh (F5)" class="nptn-btn" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">↻</button>
+          <button id="btn-home" title="Home" class="nptn-btn" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">⌂</button>
+          <button id="btn-undo" title="Reopen closed tab (Ctrl+Shift+O)" class="nptn-btn" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">↶</button>
+          <button id="btn-duplicate" title="Duplicate tab" class="nptn-btn" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">⧉</button>
         </div>
 
         <!-- URL Bar -->
@@ -83,15 +104,33 @@
             <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">
               <input id="landing-url" type="text" placeholder="https://example.com"
                      style="background:#1a1a2e;border:1px solid #333;color:#00ff88;padding:8px 12px;border-radius:3px;font-family:inherit;font-size:13px;width:280px;outline:none;"
-                     onkeydown="if(event.key==='Enter')window.bootFromLanding()">
-              <button onclick="window.bootFromLanding()"
-                      style="background:#00ff88;color:#0a0a0f;border:none;padding:8px 16px;border-radius:3px;font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer;">Boot Proxy</button>
+                     onkeydown="if(event.key==='Enter')window.bootFromLanding()" />
+              <button onclick="window.bootFromLanding()" class="nptn-btn"
+                      style="background:#00ff88;color:#0a0a0f;border:none;padding:8px 16px;border-radius:3px;font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer;transition:all .15s;box-shadow:0 0 12px rgba(0,255,136,0.2);">Boot Proxy</button>
             </div>
-            <div style="font-size:10px;color:#444;line-height:1.8;">
-              <div>🔬 SW Navigation Fetch — cross-origin HTML read &amp; rewrite</div>
-              <div>🔄 Resource URL Proxying — all assets stay same-origin</div>
-              <div>📄 Drag &amp; drop HTML files — local WASM rewrite</div>
-              <div>📋 Paste raw HTML — instant processing</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:420px;margin:0 auto 20px auto;text-align:left;">
+              <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:10px 12px;">
+                <div style="font-size:12px;color:#00ff88;margin-bottom:4px;font-weight:bold;">🔬 SW Proxy</div>
+                <div style="font-size:10px;color:#555;line-height:1.5;">ServiceWorker intercepts navigation, fetches cross-origin, rewrites HTML so all assets stay same-origin.</div>
+              </div>
+              <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:10px 12px;">
+                <div style="font-size:12px;color:#00ff88;margin-bottom:4px;font-weight:bold;">🛡 Anti-Fingerprint</div>
+                <div style="font-size:10px;color:#555;line-height:1.5;">Canvas, WebGL, AudioContext, screen, navigator spoofing injected into every proxied page.</div>
+              </div>
+              <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:10px 12px;">
+                <div style="font-size:12px;color:#00ff88;margin-bottom:4px;font-weight:bold;">🌐 TCP/IP in WASM</div>
+                <div style="font-size:10px;color:#555;line-height:1.5;">smoltcp TCP/IP stack running inside the browser via WebAssembly. Zero relay servers.</div>
+              </div>
+              <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:10px 12px;">
+                <div style="font-size:12px;color:#00ff88;margin-bottom:4px;font-weight:bold;">📄 Local Processing</div>
+                <div style="font-size:10px;color:#555;line-height:1.5;">Drag &amp; drop HTML files or paste raw HTML — WASM rewrites entirely in-browser, no network.</div>
+              </div>
+            </div>
+            <div style="font-size:10px;color:#444;margin-bottom:16px;">
+              <span style="color:#555;margin-right:8px;">Try:</span>
+              <a href="#" onclick="window.bootExample('https://example.com');return false;" style="color:#00aa66;text-decoration:none;margin-right:8px;">example.com</a>
+              <a href="#" onclick="window.bootExample('https://neverssl.com');return false;" style="color:#00aa66;text-decoration:none;margin-right:8px;">neverssl.com</a>
+              <a href="#" onclick="window.bootExample('https://httpbin.org');return false;" style="color:#00aa66;text-decoration:none;">httpbin.org</a>
             </div>
             <div id="drop-zone" style="margin-top:20px;padding:20px;border:2px dashed #222;border-radius:4px;color:#444;font-size:11px;max-width:400px;margin-left:auto;margin-right:auto;">
               <div>Drop an HTML file here</div>
@@ -186,6 +225,7 @@
       var WASM_JS_B64         = "{{WASM_JS}}";
       var WASM_BIN_B64        = "{{WASM_BIN}}";
       var NETWORK_ADAPTER_B64 = "{{NETWORK_ADAPTER}}";
+      var FINGERPRINT_JS_B64   = "{{FINGERPRINT_JS}}";
 
       // ====== CONSTANTS ======
       var APP_VERSION = '3.0.0';
@@ -215,7 +255,7 @@
         'Ctrl++': 'Zoom in',
         'Ctrl+-': 'Zoom out',
         'Ctrl+0': 'Zoom reset',
-        'Ctrl+Shift+T': 'Reopen closed tab',
+        'Ctrl+Shift+O': 'Reopen closed tab',
         'Escape': 'Close panels / Stop loading',
       };
 
@@ -708,7 +748,7 @@
         });
         html += '</div>';
         html += '<div style="display:flex;gap:4px;">';
-        html += '<input id="console-input" type="text" placeholder="JavaScript expression..." style="flex:1;background:#1a1a2e;border:1px solid #333;color:#00ff88;padding:4px 8px;border-radius:3px;font-family:inherit;font-size:11px;outline:none;" onkeydown="if(event.key===\'Enter\')window.execConsole()">';
+        html += '<input id="console-input" type="text" placeholder="JavaScript expression..." style="flex:1;background:#1a1a2e;border:1px solid #333;color:#00ff88;padding:4px 8px;border-radius:3px;font-family:inherit;font-size:11px;outline:none;" onkeydown="if(event.key===\'Enter\')window.execConsole()" />';
         html += '<button onclick="window.execConsole()" style="background:#1a3a2e;border:1px solid #004d33;color:#00ff88;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">Run</button>';
         html += '<button onclick="window.clearConsole()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">Clear</button>';
         html += '</div>';
@@ -724,7 +764,7 @@
 
         html += '<div style="margin-bottom:12px;">';
         html += '<label style="display:block;color:#888;font-size:10px;margin-bottom:4px;">User-Agent Override</label>';
-        html += '<input id="setting-ua" type="text" value="' + escapeHtml(s.userAgent || '') + '" placeholder="Leave empty for browser default" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:4px 8px;border-radius:3px;font-family:inherit;font-size:11px;">';
+        html += '<input id="setting-ua" type="text" value="' + escapeHtml(s.userAgent || '') + '" placeholder="Leave empty for browser default" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:4px 8px;border-radius:3px;font-family:inherit;font-size:11px;" />';
         html += '</div>';
 
         html += '<div style="margin-bottom:12px;">';
@@ -1249,6 +1289,7 @@
           cacheEnabled: s.cacheEnabled,
           stripTrackers: s.stripTrackers,
           injectBridge: s.injectBridge,
+          fingerprintCode: fingerprintEngine || null,
         });
       }
 
@@ -1352,11 +1393,47 @@
                 var transformed = kernel.transformHtmlAdvanced(html, 'https://example.com', window.location.origin, window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/proxy');
                 toast('WASM rewrite: ' + formatBytes(transformed.length));
                 renderLocalHTML(transformed);
-              } catch(ex) { toast('WASM transform failed: ' + ex.message, 'error'); renderLocalHTML(html); }
-            } else { renderLocalHTML(html); }
+              } catch(ex) { toast('WASM transform failed: ' + ex.message, 'error'); renderLocalHTML(transformLocalHTML(html)); }
+            } else { renderLocalHTML(transformLocalHTML(html)); }
           };
           reader.readAsText(f);
         });
+      }
+
+      function transformLocalHTML(html) {
+        // Lightweight client-side URL rewriter for drag/drop/paste fallback.
+        // Prefixes external URLs so navigation still routes through the proxy.
+        var base = 'https://example.com';
+        var origin = window.location.origin;
+        var proxyPath = origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/proxy?url=';
+        function toProxy(u) {
+          if (!u || u.startsWith('data:') || u.startsWith('blob:') || u.startsWith('javascript:') || u.startsWith('mailto:') || u.startsWith('tel:') || u.startsWith('#')) return u;
+          if (u.startsWith(proxyPath)) return u;
+          if (u.startsWith('http://') || u.startsWith('https://')) return proxyPath + encodeURIComponent(u);
+          if (u.startsWith('//')) return proxyPath + encodeURIComponent('https:' + u);
+          if (u.startsWith('/')) return proxyPath + encodeURIComponent(base + u);
+          return proxyPath + encodeURIComponent(base + '/' + u);
+        }
+        var out = html;
+        out = out.replace(/href="([^"]*)"/gi, function(m, u) { return 'href="' + toProxy(u) + '"'; });
+        out = out.replace(/href='([^']*)'/gi, function(m, u) { return 'href="' + toProxy(u) + '"'; });
+        out = out.replace(/src="([^"]*)"/gi, function(m, u) { return 'src="' + toProxy(u) + '"'; });
+        out = out.replace(/src='([^']*)'/gi, function(m, u) { return 'src="' + toProxy(u) + '"'; });
+        out = out.replace(/action="([^"]*)"/gi, function(m, u) { return 'action="' + toProxy(u) + '"'; });
+        out = out.replace(/action='([^']*)'/gi, function(m, u) { return 'action="' + toProxy(u) + '"'; });
+        out = out.replace(/url\((['"]?)([^'")]+)\1\)/gi, function(m, q, u) { return 'url("' + toProxy(u) + '")'; });
+        out = out.replace(/content="\s*\d+\s*;\s*url=([^"]*)"/gi, function(m, u) { return 'content="0; url=' + toProxy(u) + '"'; });
+        out = out.replace(/<meta[^>]*http-equiv="Content-Security-Policy"[^>]*>/gi, '');
+        out = out.replace(/<meta[^>]*http-equiv="X-Frame-Options"[^>]*>/gi, '');
+        var runtime = '<script id="__nptn_local_runtime">(function(){var p="' + proxyPath + '";function toProxy(u){if(!u||u.startsWith("data:")||u.startsWith("blob:")||u.startsWith("javascript:")||u.startsWith("mailto:")||u.startsWith("tel:")||u.startsWith("#"))return u;if(u.startsWith("http://")||u.startsWith("https://"))return p+encodeURIComponent(u);if(u.startsWith("//"))return p+encodeURIComponent("https:"+u);return u;}document.addEventListener("click",function(e){var a=e.target.closest("a");if(!a)return;var h=a.getAttribute("href");if(h&&!h.startsWith("javascript:")&&!h.startsWith("#")&&!h.startsWith("mailto:")&&!h.startsWith("tel:")){a.setAttribute("href",toProxy(h));}},true);document.addEventListener("submit",function(e){var f=e.target;if(f.tagName!=="FORM")return;var ac=f.getAttribute("action");if(ac)f.setAttribute("action",toProxy(ac));},true);})();</script>';
+        if (out.includes('</head>')) {
+          out = out.replace('</head>', runtime + '</head>');
+        } else if (out.includes('<body')) {
+          out = out.replace('<body', runtime + '<body');
+        } else {
+          out = runtime + out;
+        }
+        return out;
       }
 
       function renderLocalHTML(html) {
@@ -1381,8 +1458,8 @@
             var transformed = kernel.transformHtmlAdvanced(html, 'https://example.com', window.location.origin, window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/proxy');
             toast('WASM rewrite: ' + formatBytes(transformed.length));
             renderLocalHTML(transformed);
-          } catch(ex) { toast('WASM failed: ' + ex.message, 'error'); renderLocalHTML(html); }
-        } else { renderLocalHTML(html); }
+          } catch(ex) { toast('WASM failed: ' + ex.message, 'error'); renderLocalHTML(transformLocalHTML(html)); }
+        } else { renderLocalHTML(transformLocalHTML(html)); }
       };
 
       // ====== WASM KERNEL ======
@@ -1399,23 +1476,55 @@
           var wasmResp = new Response(wasmBytes.buffer, { headers: {'Content-Type':'application/wasm'} });
           log(L.INF, 'WASM JS: ' + jsBlob.size + ' bytes, binary: ' + wasmBytes.length + ' bytes');
           var mod = await import(jsURL);
-          await mod.default(wasmResp);
-          kernel = new mod.NeptuneKernel();
-          log(L.INF, 'WASM kernel ready');
 
-          // Initialize smoltcp network stack (Phase 3)
-          try {
-            // Pass placeholder TX callback; replaced by NetworkAdapter via setTxCallback
-            netStack = new mod.NeptuneNetStack(function(){});
-            log(L.INF, 'smoltcp TCP/IP stack initialized');
-          } catch(e) {
-            log(L.WRN, 'smoltcp stack init skipped: ' + e.message);
+          // wasm-pack can export default differently depending on target
+          if (mod.default) {
+            try { await mod.default(wasmResp); } catch(ex) { log(L.WRN, 'WASM default init: ' + ex.message); }
+          }
+
+          // NeptuneKernel may or may not be present depending on build
+          if (mod.NeptuneKernel) {
+            try { kernel = new mod.NeptuneKernel(); log(L.INF, 'WASM NeptuneKernel ready'); }
+            catch(ex) { log(L.WRN, 'NeptuneKernel init: ' + ex.message); }
+          } else {
+            log(L.WRN, 'NeptuneKernel not exported — kernel features disabled');
+          }
+
+          // NeptuneNetStack may or may not be present
+          if (mod.NeptuneNetStack) {
+            try {
+              netStack = new mod.NeptuneNetStack(function(){});
+              log(L.INF, 'smoltcp TCP/IP stack initialized');
+            } catch(e) {
+              log(L.WRN, 'smoltcp stack init: ' + e.message);
+            }
+          } else {
+            log(L.WRN, 'NeptuneNetStack not exported — network stack disabled');
           }
 
           return true;
         } catch(e) {
           log(L.ERR, 'WASM load failed: ' + e.message);
           console.error(e);
+          return false;
+        }
+      }
+
+      // ====== FINGERPRINT ENGINE ======
+      var fingerprintEngine = null;
+
+      function loadFingerprintEngine() {
+        if (!FINGERPRINT_JS_B64 || FINGERPRINT_JS_B64 === "{{FINGERPRINT_JS}}") {
+          log(L.WRN, 'Fingerprint engine not embedded');
+          return false;
+        }
+        try {
+          var bytes = Uint8Array.from(atob(FINGERPRINT_JS_B64), function(c){ return c.charCodeAt(0); });
+          fingerprintEngine = new TextDecoder().decode(bytes);
+          log(L.INF, 'Fingerprint engine loaded (' + fingerprintEngine.length + ' bytes)');
+          return true;
+        } catch(e) {
+          log(L.ERR, 'Fingerprint engine load failed: ' + e.message);
           return false;
         }
       }
@@ -1433,8 +1542,8 @@
           log(L.INF, 'Network adapter loaded (' + NETWORK_ADAPTER_B64.length + ' base64 chars)');
 
           // Wire up NetworkAdapter to smoltcp if available
-          if (typeof NetworkAdapter !== 'undefined' && netStack) {
-            netAdapter = new NetworkAdapter(netStack);
+          if (window.NetworkAdapter && netStack) {
+            netAdapter = new window.NetworkAdapter(netStack);
             netStack.set_tx_callback(function(frame) {
               netAdapter.handleTxFrame(frame);
             });
@@ -1579,8 +1688,8 @@
         if (e.ctrlKey && e.key === 't') { e.preventDefault(); createTab(); }
         // Ctrl+W → close tab
         if (e.ctrlKey && e.key === 'w') { e.preventDefault(); var tab = tabs.find(function(t){return t.id===activeTabId}); if(tab)closeTab(tab.id); }
-        // Ctrl+Shift+T → reopen closed tab
-        if (e.ctrlKey && e.shiftKey && e.key === 't') { e.preventDefault(); undoCloseTab(); }
+        // Ctrl+Shift+O → reopen closed tab (avoids browser's Ctrl+Shift+T conflict)
+        if (e.ctrlKey && e.shiftKey && e.key === 'o') { e.preventDefault(); undoCloseTab(); }
         // Ctrl+PageUp / Ctrl+PageDown → switch Neptune tabs (avoid Ctrl+Tab browser conflict)
         if (e.ctrlKey && e.key === 'PageUp') { e.preventDefault(); var idx = tabs.findIndex(function(t){return t.id===activeTabId}); if(idx>0)activateTab(tabs[idx-1].id); }
         if (e.ctrlKey && e.key === 'PageDown') { e.preventDefault(); var idx = tabs.findIndex(function(t){return t.id===activeTabId}); if(idx<tabs.length-1)activateTab(tabs[idx+1].id); }
@@ -1645,6 +1754,7 @@
       // ====== EXPORT STATE ======
       window.exportState = function() {
         if (!kernel) { toast('WASM not loaded', 'error'); return null; }
+        if (!kernel.create_snapshot) { toast('Snapshot not supported by WASM build', 'warn'); return null; }
         try {
           var snap = kernel.create_snapshot();
           var u = new URL(window.location.href);
@@ -1655,6 +1765,16 @@
       };
 
       // ====== BOOT SEQUENCE ======
+      function setBootStatus(msg, done) {
+        var el = document.getElementById('boot-status');
+        var overlay = document.getElementById('boot-overlay');
+        if (el) el.textContent = msg;
+        if (done && overlay) {
+          overlay.style.opacity = '0';
+          setTimeout(function() { if(overlay) overlay.style.display = 'none'; }, 400);
+        }
+      }
+
       async function boot() {
         // Register bridge message listener exactly once
         window.addEventListener('message', handleIframeMessage);
@@ -1667,7 +1787,16 @@
         var snapshot = params.get('state');
         var proxyMode = params.has('__nptn');
 
-        if (proxyMode) { landing.style.display = 'none'; return; }
+        if (proxyMode) {
+          landing.style.display = 'none';
+          setBootStatus('Proxy mode — skipping boot', true);
+          return;
+        }
+
+        window.bootExample = function(url) {
+          document.getElementById('landing-url').value = url;
+          window.bootFromLanding();
+        };
 
         log(L.INF, '========================================');
         log(L.INF, 'project: neptune v' + APP_VERSION);
@@ -1675,18 +1804,28 @@
         if (target) log(L.INF, 'Target: ' + target);
         if (snapshot) log(L.INF, 'Snapshot: ' + atob(snapshot).length + ' bytes');
 
-        await loadWASM();
+        setBootStatus('Loading WASM kernel...');
+        var wasmOk = await loadWASM();
+        if (!wasmOk) { setBootStatus('WASM unavailable — proxy still functional', true); }
+
+        setBootStatus('Registering Service Worker...');
         var ok = await bootSW();
+        if (!ok) {
+          setBootStatus('Service Worker failed — proxy requires SW', true);
+          toast('Service Worker failed. Proxy cannot function.', 'error');
+          return;
+        }
 
         // Initialize network adapter after SW is ready
-        if (ok) {
-          loadNetworkAdapter();
-          if (netAdapter) {
-            netAdapter.start();
-            log(L.INF, 'NetworkAdapter started — smoltcp fetch()-based networking active');
-            toast('Network stack online', 'info');
-          }
+        setBootStatus('Initializing network stack...');
+        loadNetworkAdapter(); loadFingerprintEngine();
+        if (netAdapter) {
+          netAdapter.start();
+          log(L.INF, 'NetworkAdapter started — smoltcp fetch()-based networking active');
+          toast('Network stack online', 'info');
         }
+
+        setBootStatus('Ready', true);
 
         if (ok && target) {
           if (navigator.serviceWorker.controller) {

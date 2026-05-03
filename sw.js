@@ -37,6 +37,7 @@ const swConfig = {
   urlWhitelist:       [],
   urlBlacklist:       [],
   injectBridge:       true,
+  fingerprintCode:    null,  // Injected fingerprint randomization engine
   stripTrackers:      true,
   darkMode:           false,
 };
@@ -55,7 +56,7 @@ let blockedCount  = 0;
 let startTime     = Date.now();
 
 // ── Cache ───────────────────────────────────────────────
-const CACHE_NAME = 'neptune-v1';
+const CACHE_NAME = 'neptune-v2';
 
 // ── Known tracker patterns ─────────────────────────────
 const TRACKER_PATTERNS = [
@@ -134,6 +135,7 @@ self.addEventListener('message', e => {
       if (d.urlWhitelist)                     swConfig.urlWhitelist     = d.urlWhitelist;
       if (d.urlBlacklist)                     swConfig.urlBlacklist     = d.urlBlacklist;
       if (d.injectBridge !== undefined)       swConfig.injectBridge     = d.injectBridge;
+      if (d.fingerprintCode !== undefined)       swConfig.fingerprintCode  = d.fingerprintCode;
       if (d.stripTrackers !== undefined)      swConfig.stripTrackers    = d.stripTrackers;
       if (d.darkMode !== undefined)           swConfig.darkMode         = d.darkMode;
       if (src) src.postMessage({ type: 'CONFIG_ACK', config: swConfig });
@@ -185,11 +187,20 @@ self.addEventListener('message', e => {
 
     // ── Network Adapter Bridge ──────────────────────────
     case 'NET_ADAPT_CONNECT':
-      handleNetAdaptConnect(d, src);
+      handleNetAdaptConnect(d, src).catch(e => {
+        console.error('[SW] NET_ADAPT_CONNECT error:', e.message);
+      });
       break;
 
     case 'NET_ADAPT_DATA':
-      handleNetAdaptData(d, src);
+      handleNetAdaptData(d, src).catch(e => {
+        console.error('[SW] NET_ADAPT_DATA error:', e.message);
+        if (src) src.postMessage({
+          type: 'NET_ADAPT_ERROR',
+          localPort: d.localPort,
+          error: e.message,
+        });
+      });
       break;
 
     case 'NET_ADAPT_CLOSE':
@@ -600,6 +611,9 @@ async function corsFetch(targetUrl, req, reqHeaders, isDocument) {
     init.body = await req.arrayBuffer();
   }
 
+  // Phase 6: Light timing jitter for CORS direct fetch (0–50ms)
+  await new Promise(r => setTimeout(r, Math.floor(Math.pow(Math.random(), 2) * 50)));
+
   const resp = await fetch(targetUrl, init);
 
   // Network errors (type 'error') or failed requests (status 0) — fall back.
@@ -651,6 +665,10 @@ async function opaqueFetch(targetUrl, req, reqHeaders) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       init.body = await req.arrayBuffer();
     }
+
+    // Phase 6: Light timing jitter for opaque fallback traffic (0–100ms)
+    await new Promise(r => setTimeout(r, Math.floor(Math.pow(Math.random(), 2) * 100)));
+
     const resp = await fetch(targetUrl, init);
     return resp;
   } catch (e) {
@@ -783,7 +801,7 @@ function transformHTML(html, targetUrl, origin, cfg) {
     if (!u || u.startsWith('data:') || u.startsWith('blob:')) return u;
     // Already rewritten — don't double-wrap
     if (u.startsWith(proxyRoot)) return u;
-    if (u.startsWith('http')) return proxyRoot + encodeURIComponent(u);
+    if (u.startsWith('http://') || u.startsWith('https://')) return proxyRoot + encodeURIComponent(u);
     if (u.startsWith('//')) return proxyRoot + encodeURIComponent('https:' + u);
     if (u.startsWith('/')) return proxyRoot + encodeURIComponent(targetOrigin + u);
     if (u.startsWith('#') || u.startsWith('javascript:') || u.startsWith('mailto:') || u.startsWith('tel:')) return u;
@@ -792,11 +810,28 @@ function transformHTML(html, targetUrl, origin, cfg) {
 
   let out = html;
 
+  // Inject fingerprint randomization engine (before any page scripts)
+  if (cfg.fingerprintCode && cfg.fingerprintCode.length > 0) {
+    const fpScript = '<script id="__nptn_fingerprint">' + cfg.fingerprintCode + '</script>';
+    if (out.includes('<head>')) {
+      out = out.replace('<head>', '<head>' + fpScript);
+    } else if (out.includes('<html>')) {
+      out = out.replace('<html>', '<html><head>' + fpScript + '</head>');
+    } else {
+      out = fpScript + out;
+    }
+  }
+
   // Strip tracker scripts
   if (cfg.stripTrackers) {
+    // External tracker scripts by src URL pattern
     out = out.replace(/<script[^>]*src=["']([^"']*(?:google-analytics|gtag|googletagmanager|doubleclick|facebook\.com\/tr|mixpanel|amplitude|segment|hotjar|clarity\.ms|tracker|pixel|beacon|telemetry)[^"']*)["'][^>]*><\/script>/gi, '<!-- neptune: tracker blocked -->');
-    out = out.replace(/<script[^>]*>[\s\S]*?(?:gtag|ga\(|analytics|mixpanel|amplitude|hotjar)[\s\S]*?<\/script>/gi, '<!-- neptune: inline tracker blocked -->');
+    // Inline tracker scripts — only strip if they contain analytics initialization code
+    out = out.replace(/<script[^>]*>\s*(?:[\s\S]*?(?:gtag\s*\(|ga\s*\(\s*['"]create['"]\s*,|GoogleAnalyticsObject|analytics\.load|mixpanel\.init|amplitude\.init|clarity\s*\(|hj\s*\())\s*[\s\S]*?<\/script>/gi, '<!-- neptune: inline tracker blocked -->');
+    // Tracking pixels / beacons
     out = out.replace(/<img[^>]*src=["']([^"']*(?:pixel|beacon|tracker|analytics)[^"']*)["'][^>]*\/?>/gi, '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" />');
+    // Google Tag Manager noscript iframe
+    out = out.replace(/<noscript>\s*<iframe[^>]*src=["']https?:\/\/www\.googletagmanager\.com[^"']*["'][^>]*><\/iframe>\s*<\/noscript>/gi, '<!-- neptune: GTM noscript blocked -->');
   }
 
   // Rewrite URLs
@@ -876,7 +911,7 @@ function transformHTML(html, targetUrl, origin, cfg) {
   'use strict';
   if(window.__nptn_injected)return;window.__nptn_injected=true;
   var base='${targetOrigin}', proxy='${proxyRoot}';
-  function p(u){if(!u||u.startsWith('data:')||u.startsWith('blob:'))return u;if(u.startsWith('http')&&!u.includes(location.origin))return proxy+encodeURIComponent(u);if(u.startsWith('//'))return proxy+encodeURIComponent('https:'+u);if(u.startsWith('/')&&!u.startsWith('/proxy'))return proxy+encodeURIComponent(base+u);return u;}
+  function p(u){if(!u||u.startsWith('data:')||u.startsWith('blob:'))return u;if((u.startsWith('http://')||u.startsWith('https://'))&&!u.includes(location.origin))return proxy+encodeURIComponent(u);if(u.startsWith('//'))return proxy+encodeURIComponent('https:'+u);if(u.startsWith('/')&&!u.startsWith('/proxy'))return proxy+encodeURIComponent(base+u);return u;}
   var of=window.fetch;
   window.fetch=function(i,init){
     if(typeof i==='string'){
@@ -1015,15 +1050,18 @@ ${lastError ? `<div class="box">${escapeHtml(lastError.message || lastError)}</d
 
 function blockedResponse(url) {
   return new Response(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-body{background:#0a0a0f;color:#ff4444;font-family:monospace;padding:40px;text-align:center}
-h1{font-size:24px;margin-bottom:12px}
-p{color:#888;font-size:13px}
-code{background:#1a1a2e;padding:2px 6px;border-radius:2px;color:#ffaa00}
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+body{background:#0a0a0f;color:#ff4444;font-family:'SF Mono','Fira Code',monospace,monospace;padding:40px 20px;text-align:center;line-height:1.6;max-width:600px;margin:0 auto}
+h1{font-size:28px;margin-bottom:12px}
+p{color:#888;font-size:13px;margin:8px 0}
+code{background:#1a1a2e;padding:2px 8px;border-radius:3px;color:#ffaa00;font-size:12px;word-break:break-all}
+.retry-btn{background:#1a3a2e;border:1px solid #004d33;color:#00ff88;padding:8px 18px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px;margin-top:16px;transition:all .15s}
+.retry-btn:hover{background:#224433}
 </style></head><body>
 <h1>🚫 Blocked by Filter</h1>
 <p><code>${escapeHtml(url)}</code></p>
 <p>URL matched blacklist rule or failed whitelist check.</p>
+<button class="retry-btn" onclick="history.back()">← Go Back</button>
 </body></html>`,
     { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Neptune-Blocked': 'filter' } }
   );
@@ -1051,52 +1089,24 @@ async function handleNetAdaptConnect(d, src) {
   const { localPort, targetHost, targetPort } = d;
   if (!localPort || !targetHost) return;
 
-  const url = `http://${targetHost}:${targetPort || 80}/`;
-  console.log('[SW-NETADAPT] CONNECT local_port=' + localPort + ' → ' + url);
+  // Store the connection state — do NOT fetch yet. The actual HTTP request
+  // comes via NET_ADAPT_DATA once smoltcp completes the TCP handshake
+  // and sends the HTTP request bytes.
+  netAdaptConnections.set(localPort, {
+    host: targetHost,
+    port: targetPort || 80,
+    controller: new AbortController(),
+    connected: true,
+  });
 
-  try {
-    const controller = new AbortController();
-    const resp = await fetch(url, {
-      method: 'GET',
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent': swConfig.userAgent || 'Neptune/3.0',
-        'Accept': '*/*',
-      },
-    });
+  console.log('[SW-NETADAPT] CONNECT local_port=' + localPort + ' → ' + targetHost + ':' + (targetPort || 80));
 
-    if (resp.ok || resp.status < 400) {
-      const buf = await resp.arrayBuffer();
-      const bytes = Array.from(new Uint8Array(buf));
-
-      netAdaptConnections.set(localPort, { host: targetHost, port: targetPort, controller });
-
-      // Send response data back to NetworkAdapter via the client
-      if (src) src.postMessage({
-        type: 'NET_ADAPT_RESPONSE',
-        localPort,
-        data: bytes,
-        close: true,
-      });
-
-      totalBytes += buf.byteLength;
-      totalRequests++;
-    } else {
-      if (src) src.postMessage({
-        type: 'NET_ADAPT_ERROR',
-        localPort,
-        error: `HTTP ${resp.status} ${resp.statusText}`,
-      });
-    }
-  } catch (e) {
-    console.error('[SW-NETADAPT] Connect failed:', e.message);
-    if (src) src.postMessage({
-      type: 'NET_ADAPT_ERROR',
-      localPort,
-      error: e.message,
-    });
-  }
+  // Acknowledge the connection back to the NetworkAdapter
+  // (the adapter already sent SYN-ACK to smoltcp; this just confirms SW state)
+  if (src) src.postMessage({
+    type: 'NET_ADAPT_CONNECTED',
+    localPort,
+  });
 }
 
 async function handleNetAdaptData(d, src) {
@@ -1109,15 +1119,20 @@ async function handleNetAdaptData(d, src) {
     return;
   }
 
-  // For HTTP requests, data segments are the HTTP request bytes.
-  // Parse the HTTP request to extract method, path, headers.
+  // Parse the HTTP request from the TCP payload bytes
   try {
-    const text = String.fromCharCode.apply(null, data);
+    const text = new TextDecoder().decode(new Uint8Array(data));
     const lines = text.split('\r\n');
     const requestLine = lines[0] || '';
     const parts = requestLine.split(' ');
     const method = parts[0] || 'GET';
-    const path = parts[1] || '/';
+    let path = parts[1] || '/';
+    // Handle absolute-URI form: GET http://host/path HTTP/1.1
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      try {
+        path = new URL(path).pathname + new URL(path).search;
+      } catch (e) {}
+    }
 
     // Parse headers
     const headers = {};
@@ -1138,17 +1153,26 @@ async function handleNetAdaptData(d, src) {
       body = data.slice(bodyStart + 4);
     }
 
-    const url = `http://${conn.host}:${conn.port || 80}${path}`;
+    const url = `http://${conn.host}:${conn.port}${path}`;
 
-    const resp = await fetch(url, {
-      method,
-      headers: {
-        'Host': conn.host,
-        'User-Agent': swConfig.userAgent || 'Neptune/3.0',
-      },
-      body: body && body.length > 0 ? new Uint8Array(body) : undefined,
-      redirect: 'follow',
-    });
+    // Build request init with optional traffic obfuscation
+    const reqInit = buildObfuscatedRequest(method, conn.host, headers, body);
+
+    // Phase 6: Apply timing jitter to obfuscate request timing patterns
+    await applyTimingJitter();
+
+    // Wire abort controller so handleNetAdaptClose can cancel in-flight requests
+    let resp;
+    try {
+      resp = await fetch(url, { ...reqInit, signal: conn.controller.signal });
+    } catch (e) {
+      // Silently swallow abort errors from handleNetAdaptClose — they are expected
+      if (e.name === 'AbortError') {
+        console.log('[SW-NETADAPT] Fetch aborted for port', localPort);
+        return;
+      }
+      throw e;
+    }
 
     const buf = await resp.arrayBuffer();
     const bytes = Array.from(new Uint8Array(buf));
@@ -1187,6 +1211,133 @@ function handleNetAdaptClose(d, src) {
     type: 'NET_ADAPT_CLOSED',
     localPort,
   });
+}
+
+/**
+ * Build a fetch init object with Phase 6 traffic obfuscation:
+ *   - Randomized header ordering and casing
+ *   - Accept-Language rotation
+ *   - Referer injection
+ *   - Timing jitter (handled by caller via setTimeout)
+ */
+function buildObfuscatedRequest(method, host, headers, body) {
+  const init = {
+    method: method,
+    redirect: 'follow',
+    cache: 'no-store',
+    mode: 'cors',
+  };
+
+  // Phase 6: Header randomization profiles
+  const profiles = [
+    // Chrome 120 on Windows
+    {
+      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'accept-language': 'en-US,en;q=0.9',
+      'accept-encoding': 'gzip, deflate, br',
+      'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+      'sec-fetch-user': '?1',
+      'upgrade-insecure-requests': '1',
+      'dnt': '1',
+    },
+    // Firefox 121 on macOS
+    {
+      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'accept-language': 'en-US,en;q=0.5',
+      'accept-encoding': 'gzip, deflate, br',
+      'dnt': '1',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+      'sec-fetch-user': '?1',
+      'upgrade-insecure-requests': '1',
+    },
+    // Safari 17 on macOS
+    {
+      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'accept-language': 'en-US,en;q=0.9',
+      'accept-encoding': 'gzip, deflate, br',
+      'upgrade-insecure-requests': '1',
+    },
+  ];
+
+  // Select random profile
+  const profile = profiles[Math.floor(Math.random() * profiles.length)];
+
+  // Build randomized header order using Headers constructor for deduplication.
+  // NOTE: The Fetch API Headers object does not guarantee transmission order;
+  // browsers normalize and may reorder headers. The shuffle here provides
+  // some defense-in-depth but is not a strict order guarantee.
+  const headerKeys = Object.keys(profile);
+  // Fisher-Yates shuffle
+  for (let i = headerKeys.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [headerKeys[i], headerKeys[j]] = [headerKeys[j], headerKeys[i]];
+  }
+
+  const randomizedHeaders = new Headers();
+  for (const key of headerKeys) {
+    randomizedHeaders.set(key, profile[key]);
+  }
+
+  // Override with any headers from the actual HTTP request (normalized lowercase)
+  const preserveHeaders = ['host', 'content-type', 'content-length', 'authorization', 'cookie', 'x-requested-with'];
+  for (const key of Object.keys(headers)) {
+    const lowerKey = key.toLowerCase();
+    if (preserveHeaders.includes(lowerKey)) {
+      randomizedHeaders.set(lowerKey, headers[key]);
+    }
+  }
+
+  // Inject dynamic referer for obfuscation
+  const referers = [
+    'https://www.google.com/',
+    'https://duckduckgo.com/',
+    'https://www.bing.com/',
+    'https://search.yahoo.com/',
+    'https://www.reddit.com/',
+  ];
+  if (!randomizedHeaders.has('referer') && Math.random() > 0.3) {
+    randomizedHeaders.set('referer', referers[Math.floor(Math.random() * referers.length)]);
+  }
+
+  // Apply user agent override from config if set
+  if (swConfig.userAgent) {
+    randomizedHeaders.set('user-agent', swConfig.userAgent);
+  } else {
+    // Rotate User-Agent from profile pool
+    const uas = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+    ];
+    randomizedHeaders.set('user-agent', uas[Math.floor(Math.random() * uas.length)]);
+  }
+
+  init.headers = randomizedHeaders;
+
+  if (body && body.length > 0) {
+    init.body = new Uint8Array(body);
+  }
+
+  // Timing jitter: return init immediately; actual jitter applied by caller
+  return init;
+}
+
+/**
+ * Apply timing jitter to an async operation to obfuscate traffic patterns.
+ * Returns a Promise that resolves after a random delay.
+ */
+function applyTimingJitter() {
+  // Random delay between 0ms and 500ms, weighted toward shorter delays
+  const jitter = Math.floor(Math.pow(Math.random(), 2) * 500);
+  return new Promise(r => setTimeout(r, jitter));
 }
 
 function broadcast(msg) {

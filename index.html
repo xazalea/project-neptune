@@ -2,78 +2,127 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>project: neptune</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%}
     body{
       background:#0a0a0f;color:#00ff88;
-      font-family:'SF Mono','Fira Code',monospace;
+      font-family:'SF Mono','Fira Code',monospace,system-ui,monospace;
       display:flex;flex-direction:column;align-items:center;
       justify-content:center;min-height:100vh;padding:2rem;
+      background-image:radial-gradient(circle at 50% 0%, rgba(0,255,136,0.03) 0%, transparent 60%);
     }
     .card{
-      width:100%;max-width:600px;
-      border:1px solid #1a1a2e;border-radius:6px;
-      background:#0f0f1a;padding:2rem;
+      width:100%;max-width:640px;
+      border:1px solid #1a1a2e;border-radius:8px;
+      background:#0f0f1a;padding:2.5rem 2rem;
+      box-shadow:0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,255,136,0.05);
+      transition:box-shadow 0.3s;
     }
-    h1{font-size:2rem;margin-bottom:0.5rem;text-shadow:0 0 10px rgba(0,255,136,0.3);}
-    .sub{color:#666;margin-bottom:2rem;font-size:0.9rem;}
-    .row{display:flex;gap:0.5rem;margin-bottom:1rem;}
+    .card:hover{box-shadow:0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,255,136,0.1);}
+    .logo{font-size:2.4rem;margin-bottom:0.5rem;text-shadow:0 0 16px rgba(0,255,136,0.25);letter-spacing:-0.5px;}
+    .sub{color:#555;margin-bottom:2rem;font-size:0.85rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+    .badge{background:#1a3a2e;color:#00ff88;padding:2px 8px;border-radius:3px;font-size:0.7rem;border:1px solid #004d33;}
+    .row{display:flex;gap:0.5rem;margin-bottom:1.2rem;}
     input{
       flex:1;background:#1a1a2e;border:1px solid #333;
-      color:#00ff88;padding:0.6rem 0.8rem;border-radius:3px;
-      font-family:inherit;font-size:0.9rem;
+      color:#00ff88;padding:0.7rem 0.9rem;border-radius:4px;
+      font-family:inherit;font-size:0.95rem;outline:none;
+      transition:border-color 0.2s, box-shadow 0.2s;
     }
-    input:focus{outline:none;border-color:#00ff88;}
+    input:focus{border-color:#00ff88;box-shadow:0 0 0 2px rgba(0,255,136,0.08);}
+    input::placeholder{color:#444;}
     button{
       background:#00ff88;color:#0a0a0f;border:none;
-      padding:0.6rem 1.2rem;border-radius:3px;
-      font-family:inherit;font-size:0.9rem;font-weight:bold;cursor:pointer;
+      padding:0.7rem 1.4rem;border-radius:4px;
+      font-family:inherit;font-size:0.95rem;font-weight:bold;cursor:pointer;
+      transition:all 0.15s;box-shadow:0 0 14px rgba(0,255,136,0.15);
     }
-    button:hover{background:#00cc6a;}
-    .info{color:#444;font-size:0.8rem;line-height:1.6;margin-top:1.5rem;}
-    .info code{background:#1a1a2e;padding:0.15rem 0.3rem;border-radius:2px;color:#00ff88;}
-    a{color:#00aa66;text-decoration:none;}
+    button:hover{background:#00e67a;box-shadow:0 0 18px rgba(0,255,136,0.25);transform:translateY(-1px);}
+    button:active{transform:translateY(0);}
+    .info{color:#444;font-size:0.82rem;line-height:1.7;margin-top:1.8rem;}
+    .info code{background:#1a1a2e;padding:0.15rem 0.4rem;border-radius:3px;color:#00ff88;font-size:0.78rem;}
+    a{color:#00aa66;text-decoration:none;transition:color 0.15s;}
     a:hover{color:#00ff88;}
-    .step{margin-bottom:0.8rem;color:#555;font-size:0.85rem;}
-    .step strong{color:#888;}
+    .step{margin-bottom:0.9rem;color:#555;font-size:0.85rem;display:flex;align-items:baseline;gap:6px;}
+    .step strong{color:#888;min-width:1.2rem;}
+    .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:1.5rem;}
+    .feat{background:#111;border:1px solid #1a1a2e;border-radius:6px;padding:12px;text-align:center;transition:all 0.2s;}
+    .feat:hover{border-color:#004d33;background:#13131f;}
+    .feat-icon{font-size:1.2rem;margin-bottom:6px;}
+    .feat-title{color:#00ff88;font-size:0.75rem;font-weight:bold;margin-bottom:4px;}
+    .feat-desc{color:#444;font-size:0.7rem;line-height:1.4;}
+    .examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:1rem;}
+    .examples a{background:#1a1a2e;border:1px solid #222;padding:4px 10px;border-radius:3px;font-size:0.75rem;color:#00aa66;transition:all 0.15s;}
+    .examples a:hover{border-color:#004d33;color:#00ff88;background:#1a3a2e;}
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>project: neptune</h1>
-    <p class="sub">WASM Unikernel / Browser Proxy</p>
+    <div class="logo">project: neptune</div>
+    <p class="sub">
+      <span>WASM Unikernel / Browser Proxy</span>
+      <span class="badge">v3.0.0</span>
+      <span class="badge">Zero External Servers</span>
+    </p>
 
     <div class="row">
-      <input type="text" id="url" placeholder="https://example.com" value="https://example.com">
+      <input type="text" id="url" placeholder="https://example.com" value="https://example.com"
+             onkeydown="if(event.key==='Enter')boot()">
       <button onclick="boot()">Boot Proxy</button>
     </div>
 
+    <div class="examples">
+      <a href="neptune.svg?url=https://example.com">example.com</a>
+      <a href="neptune.svg?url=https://neverssl.com">neverssl.com</a>
+      <a href="neptune.svg?url=https://httpbin.org">httpbin.org</a>
+      <a href="neptune.svg?url=https://info.cern.ch">info.cern.ch</a>
+    </div>
+
     <div class="info">
-      <div class="step"><strong>1.</strong> Build: <code>python3 build.py</code></div>
-      <div class="step"><strong>2.</strong> Serve: <code>python3 server.py</code></div>
-      <div class="step"><strong>3.</strong> Open the cartridge below with a target URL</div>
-      <p>Direct link: <a id="link" href="neptune.svg?url=https://example.com">neptune.svg?url=https://example.com</a></p>
-      <p style="margin-top:0.8rem">
-        The SVG is a self-contained "cartridge" that bootstraps a WASM unikernel,
-        registers a Service Worker, and proxies the target site through a local
-        tunnel with HTML rewriting.
+      <div class="step"><strong>1.</strong> Build the cartridge: <code>python3 build.py</code></div>
+      <div class="step"><strong>2.</strong> Serve locally: <code>python3 server.py</code></div>
+      <div class="step"><strong>3.</strong> Open <code>neptune.svg?url=TARGET</code> in any modern browser</div>
+      <p style="margin-top:1rem;color:#555;">
+        Neptune is a self-contained SVG "cartridge" that bootstraps a WASM unikernel,
+        registers a Service Worker kernel, and proxies any target site through a
+        local tunnel with full HTML rewriting, tracker blocking, and anti-fingerprinting.
       </p>
+    </div>
+
+    <div class="features">
+      <div class="feat">
+        <div class="feat-icon">🔬</div>
+        <div class="feat-title">SW Proxy</div>
+        <div class="feat-desc">Cross-origin fetch &amp; rewrite via ServiceWorker</div>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🛡</div>
+        <div class="feat-title">Anti-Track</div>
+        <div class="feat-desc">Fingerprint randomization per session</div>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🌐</div>
+        <div class="feat-title">WASM TCP/IP</div>
+        <div class="feat-desc">smoltcp stack with fetch() bridge</div>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📄</div>
+        <div class="feat-title">Local Rewrite</div>
+        <div class="feat-desc">Drag/drop or paste HTML — no network</div>
+      </div>
     </div>
   </div>
 
   <script>
     function boot(){
-      var u = document.getElementById('url').value;
+      var u = document.getElementById('url').value.trim();
       if(!u) return;
+      if(!u.startsWith('http')) u = 'https://' + u;
       window.location.href = 'neptune.svg?url=' + encodeURIComponent(u);
     }
-    document.getElementById('url').addEventListener('keypress', function(e){
-      if(e.key === 'Enter') boot();
-    });
-    document.getElementById('url').addEventListener('input', function(e){
-      document.getElementById('link').href = 'neptune.svg?url=' + encodeURIComponent(e.target.value);
-    });
   </script>
 </body>
 </html>

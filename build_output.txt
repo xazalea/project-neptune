@@ -1,0 +1,57 @@
+==================================================
+  project: neptune — Build
+==================================================
+
+[1/6] Compiling Rust WASM kernel...
+  > wasm-pack build --target web --out-dir pkg --no-typescript --no-opt
+
+[2/6] Reading build artifacts...
+  SW code:           75396 base64 chars (56545 bytes)
+  WASM JS:           46232 base64 chars (34673 bytes)
+  WASM binary:       2186464 base64 chars (1639846 bytes)
+  Network adapter:   31804 base64 chars (23852 bytes)
+  Fingerprint JS:    26244 base64 chars (19682 bytes)
+
+[3/6] Embedding into SVG template...
+
+[4/6] Output: /Users/rohan/neptune/neptune.svg
+  SVG size: 4646.5 KB (4757996 bytes)
+
+[5/6] Verifying no external references...
+  OK — no external URLs embedded
+
+==================================================
+  BUILD COMPLETE
+==================================================
+
+  The cartridge is a SINGLE FILE:
+    neptune.svg  — embeds SW + WASM JS glue + WASM binary + Network Adapter
+
+  Fully standalone — zero proxy servers, zero extensions, zero external URLs:
+    - ServiceWorker kernel: intercepts & proxies all requests
+    - smoltcp WASM TCP/IP stack: in-browser networking stack
+    - Network Adapter: fetch()-based Ethernet bridge (zero relay servers)
+    - Fingerprint Engine: anti-fingerprinting randomization injected into pages
+    - Direct fetch: SW fetches cross-origin, rewrites HTML, strips trackers
+    - iframe visual proxy: browse sites that block direct access
+    - Local HTML rewrite: drag/drop or paste HTML files → WASM processing
+
+  How it works:
+    ServiceWorkers are trusted browser contexts. They CAN fetch
+    cross-origin URLs and read response bodies when responding to
+    navigation events. The SW rewrites all resource URLs to go
+    through the proxy path, keeping everything same-origin.
+
+  smoltcp + Network Adapter (zero-relay networking):
+    Rust TCP/IP stack (smoltcp) → Ethernet frame → JS callback →
+    Network Adapter parses ARP/IP/TCP → SW postMessage →
+    SW fetch() → Internet → SW postMessage → feed back to smoltcp
+
+  To run locally:
+    python3 server.py
+    http://localhost:8080/neptune.svg
+
+  To deploy to GitHub Pages / jsDelivr:
+    git add neptune.svg && git commit && git push
+    The SVG is self-contained — no other files needed
+==================================================

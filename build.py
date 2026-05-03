@@ -48,8 +48,9 @@ def main():
     wasm_js_path = os.path.join(PROJ, "pkg", "neptune_kernel.js")
     wasm_bin_path = os.path.join(PROJ, "pkg", "neptune_kernel_bg.wasm")
     netadapt_path = os.path.join(PROJ, "network_adapter.js")
+    fingerprint_path = os.path.join(PROJ, "fingerprint.js")
 
-    for p in [sw_path, wasm_js_path, wasm_bin_path, netadapt_path]:
+    for p in [sw_path, wasm_js_path, wasm_bin_path, netadapt_path, fingerprint_path]:
         if not os.path.exists(p):
             print(f"\nERROR: Missing artifact: {p}")
             sys.exit(1)
@@ -63,6 +64,8 @@ def main():
     print(f"  WASM JS:           {len(wasm_js_b64)} base64 chars ({os.path.getsize(wasm_js_path)} bytes)")
     print(f"  WASM binary:       {len(wasm_bin_b64)} base64 chars ({os.path.getsize(wasm_bin_path)} bytes)")
     print(f"  Network adapter:   {len(netadapt_b64)} base64 chars ({os.path.getsize(netadapt_path)} bytes)")
+    fingerprint_b64 = b64_file(fingerprint_path)
+    print(f"  Fingerprint JS:    {len(fingerprint_b64)} base64 chars ({os.path.getsize(fingerprint_path)} bytes)")
 
     # 3. Read template and inject
     print("\n[3/6] Embedding into SVG template...")
@@ -75,9 +78,10 @@ def main():
     svg = svg.replace('"{{WASM_JS}}"', f'"{wasm_js_b64}"')
     svg = svg.replace('"{{WASM_BIN}}"', f'"{wasm_bin_b64}"')
     svg = svg.replace('"{{NETWORK_ADAPTER}}"', f'"{netadapt_b64}"')
+    svg = svg.replace('"{{FINGERPRINT_JS}}"', f'"{fingerprint_b64}"')
 
     # Verify all replaced
-    for placeholder in ["{{SW_CODE}}", "{{WASM_JS}}", "{{WASM_BIN}}", "{{NETWORK_ADAPTER}}"]:
+    for placeholder in ["{{SW_CODE}}", "{{WASM_JS}}", "{{WASM_BIN}}", "{{NETWORK_ADAPTER}}", "{{FINGERPRINT_JS}}"]:
         if placeholder in svg:
             print(f"\nERROR: Template placeholder not replaced: {placeholder}")
             sys.exit(1)
@@ -112,6 +116,7 @@ def main():
     print("    - ServiceWorker kernel: intercepts & proxies all requests")
     print("    - smoltcp WASM TCP/IP stack: in-browser networking stack")
     print("    - Network Adapter: fetch()-based Ethernet bridge (zero relay servers)")
+    print("    - Fingerprint Engine: anti-fingerprinting randomization injected into pages")
     print("    - Direct fetch: SW fetches cross-origin, rewrites HTML, strips trackers")
     print("    - iframe visual proxy: browse sites that block direct access")
     print("    - Local HTML rewrite: drag/drop or paste HTML files → WASM processing")

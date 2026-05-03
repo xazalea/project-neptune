@@ -212,11 +212,21 @@
 
       console.log('[NETADAPT] TCP CONNECT:', host + ':' + port, '(local port ' + localPort + ')');
 
+      // Track connection state for accurate TCP sequence numbers and port mapping
+      const serverSeq = this._randomSeq();
+      this.pendingConnections.set(localPort, {
+        host: host,
+        remotePort: port,
+        serverSeq: serverSeq,
+        clientSeq: clientSeq + 1,
+        connected: true,
+      });
+
       // Send SYN-ACK back to smoltcp immediately to complete handshake
       // This lets smoltcp proceed; actual connection happens via SW fetch
       const synAck = this._buildTcpSegment(
         localPort, port,
-        this._randomSeq(), clientSeq + 1, // Server seq and ack
+        serverSeq, clientSeq + 1, // Server seq and ack
         0x12, // SYN+ACK flags
         65535, // Window
         null // No payload
@@ -237,6 +247,17 @@
      */
     _handleOutboundData(localPort, payload, clientSeq, clientAck, flags) {
       this.stats.bytesTx += payload.length;
+
+      // Track client's sequence so our ACKs in _handleIncomingData stay current.
+      // The server ACK should acknowledge the next byte the client will send.
+      const conn = this.pendingConnections.get(localPort);
+      if (conn && payload.length > 0) {
+        const nextExpected = (clientSeq + payload.length) >>> 0;
+        // Only advance — smoltcp may retransmit, so don't roll back
+        if ((nextExpected - conn.clientSeq) >>> 0 < 0x80000000) {
+          conn.clientSeq = nextExpected;
+        }
+      }
 
       // Send data to SW
       this._sendToSW({
@@ -277,13 +298,26 @@
       this.stats.bytesRx += data.length;
       // framesIn is incremented by _feedToStack (single source of truth)
 
-      // Build TCP segment
+      const conn = this.pendingConnections.get(localPort);
+      const remotePort = conn ? conn.remotePort : 80;
+
+      // Maintain proper TCP sequence numbers per connection
+      let serverSeq, serverAck;
+      if (conn) {
+        serverSeq = conn.serverSeq;
+        serverAck = conn.clientSeq;
+        // Advance server sequence by data length (+1 for FIN if closing)
+        conn.serverSeq = (conn.serverSeq + data.length + (isClose ? 1 : 0)) >>> 0;
+      } else {
+        serverSeq = this._randomSeq();
+        serverAck = 1;
+      }
+
+      // Build TCP segment with correct port and sequence numbers
       const tcpFlags = isClose ? 0x11 : 0x18; // FIN+ACK or PSH+ACK
-      const serverSeq = this._randomSeq();
-      const serverAck = 1; // Simplified
 
       const segment = this._buildTcpSegment(
-        80, // "server" port (HTTP)
+        remotePort,
         localPort,
         serverSeq,
         serverAck,
@@ -315,6 +349,7 @@
           // Connection closed by remote
           if (d.localPort) {
             this._handleIncomingData(d.localPort, new Uint8Array(0), true);
+            this.pendingConnections.delete(d.localPort);
           }
           break;
 
@@ -322,14 +357,17 @@
           console.error('[NETADAPT] SW error for port', d.localPort, ':', d.error);
           // Send RST to smoltcp
           if (d.localPort) {
+            const conn = this.pendingConnections.get(d.localPort);
+            const remotePort = conn ? conn.remotePort : 80;
             const rst = this._buildTcpSegment(
-              80, d.localPort,
+              remotePort, d.localPort,
               0, 0,
               0x04, // RST
               0,
               null
             );
             this._feedToStack(rst);
+            this.pendingConnections.delete(d.localPort);
           }
           break;
       }
@@ -360,6 +398,11 @@
         // Poll the stack (may trigger TX callbacks that enqueue RX frames)
         this.stack.poll();
 
+        // Push any TCP data queued by on_tcp_data callbacks into socket buffers
+        if (this.stack.process_received) {
+          this.stack.process_received();
+        }
+
         // Process newly queued RX frames after poll released the mutex.
         // Only re-poll if we actually drained new frames.
         let drained = false;
@@ -377,6 +420,10 @@
         if (drained) {
           // Poll again to process responses to the queued frames
           this.stack.poll();
+          // Process any TCP data queued during the second poll
+          if (this.stack.process_received) {
+            this.stack.process_received();
+          }
         }
       } catch (e) {
         console.error('[NETADAPT] Poll error:', e.message);
