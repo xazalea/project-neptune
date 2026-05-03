@@ -36,6 +36,11 @@ console_error_panic_hook = "0.1"
 tl = "0.7"
 url = "2.5"
 base64 = "0.22"
+smoltcp = { version = "0.11", default-features = false, features = [
+  "alloc", "medium-ethernet", "proto-ipv4", "proto-ipv6",
+  "socket-tcp", "socket-udp", "socket-icmp", "socket-dns", "socket-dhcpv4",
+  "socket-raw", "proto-dns", "proto-dhcpv4", "async"
+] }
 
 [profile.release]
 opt-level = 3

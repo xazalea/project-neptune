@@ -33,7 +33,7 @@ def main():
     print("=" * 50)
 
     # 1. Compile Rust → WASM
-    print("\n[1/5] Compiling Rust WASM kernel...")
+    print("\n[1/6] Compiling Rust WASM kernel...")
     try:
         run(["wasm-pack", "build", "--target", "web", "--out-dir", "pkg",
              "--no-typescript", "--no-opt"])
@@ -43,12 +43,13 @@ def main():
         sys.exit(1)
 
     # 2. Read artifacts
-    print("\n[2/5] Reading build artifacts...")
+    print("\n[2/6] Reading build artifacts...")
     sw_path = os.path.join(PROJ, "sw.js")
     wasm_js_path = os.path.join(PROJ, "pkg", "neptune_kernel.js")
     wasm_bin_path = os.path.join(PROJ, "pkg", "neptune_kernel_bg.wasm")
+    netadapt_path = os.path.join(PROJ, "network_adapter.js")
 
-    for p in [sw_path, wasm_js_path, wasm_bin_path]:
+    for p in [sw_path, wasm_js_path, wasm_bin_path, netadapt_path]:
         if not os.path.exists(p):
             print(f"\nERROR: Missing artifact: {p}")
             sys.exit(1)
@@ -56,13 +57,15 @@ def main():
     sw_b64 = b64_file(sw_path)
     wasm_js_b64 = b64_file(wasm_js_path)
     wasm_bin_b64 = b64_file(wasm_bin_path)
+    netadapt_b64 = b64_file(netadapt_path)
 
-    print(f"  SW code:    {len(sw_b64)} base64 chars ({os.path.getsize(sw_path)} bytes)")
-    print(f"  WASM JS:    {len(wasm_js_b64)} base64 chars ({os.path.getsize(wasm_js_path)} bytes)")
-    print(f"  WASM binary: {len(wasm_bin_b64)} base64 chars ({os.path.getsize(wasm_bin_path)} bytes)")
+    print(f"  SW code:           {len(sw_b64)} base64 chars ({os.path.getsize(sw_path)} bytes)")
+    print(f"  WASM JS:           {len(wasm_js_b64)} base64 chars ({os.path.getsize(wasm_js_path)} bytes)")
+    print(f"  WASM binary:       {len(wasm_bin_b64)} base64 chars ({os.path.getsize(wasm_bin_path)} bytes)")
+    print(f"  Network adapter:   {len(netadapt_b64)} base64 chars ({os.path.getsize(netadapt_path)} bytes)")
 
     # 3. Read template and inject
-    print("\n[3/5] Embedding into SVG template...")
+    print("\n[3/6] Embedding into SVG template...")
     template_path = os.path.join(PROJ, "template.svg")
     with open(template_path, "r") as f:
         svg = f.read()
@@ -71,9 +74,10 @@ def main():
     svg = svg.replace('"{{SW_CODE}}"', f'"{sw_b64}"')
     svg = svg.replace('"{{WASM_JS}}"', f'"{wasm_js_b64}"')
     svg = svg.replace('"{{WASM_BIN}}"', f'"{wasm_bin_b64}"')
+    svg = svg.replace('"{{NETWORK_ADAPTER}}"', f'"{netadapt_b64}"')
 
     # Verify all replaced
-    for placeholder in ["{{SW_CODE}}", "{{WASM_JS}}", "{{WASM_BIN}}"]:
+    for placeholder in ["{{SW_CODE}}", "{{WASM_JS}}", "{{WASM_BIN}}", "{{NETWORK_ADAPTER}}"]:
         if placeholder in svg:
             print(f"\nERROR: Template placeholder not replaced: {placeholder}")
             sys.exit(1)
@@ -84,11 +88,11 @@ def main():
         f.write(svg)
 
     size_kb = len(svg) / 1024
-    print(f"\n[4/5] Output: {output_path}")
+    print(f"\n[4/6] Output: {output_path}")
     print(f"  SVG size: {size_kb:.1f} KB ({len(svg)} bytes)")
 
     # 5. Verify no external URLs in cartridge
-    print("\n[5/5] Verifying no external references...")
+    print("\n[5/6] Verifying no external references...")
     ext_urls = ["fonts.googleapis", "cdn.jsdelivr", "unpkg.com", "jsdelivr"]
     found = [u for u in ext_urls if u in svg]
     if found:
@@ -102,16 +106,34 @@ def main():
     print("=" * 50)
     print()
     print("  The cartridge is a SINGLE FILE:")
-    print("    neptune.svg  — embeds SW + WASM JS glue + WASM binary")
+    print("    neptune.svg  — embeds SW + WASM JS glue + WASM binary + Network Adapter")
     print()
-    print("  To run locally (proxy + static server):")
+    print("  Fully standalone — zero proxy servers, zero extensions, zero external URLs:")
+    print("    - ServiceWorker kernel: intercepts & proxies all requests")
+    print("    - smoltcp WASM TCP/IP stack: in-browser networking stack")
+    print("    - Network Adapter: fetch()-based Ethernet bridge (zero relay servers)")
+    print("    - Direct fetch: SW fetches cross-origin, rewrites HTML, strips trackers")
+    print("    - iframe visual proxy: browse sites that block direct access")
+    print("    - Local HTML rewrite: drag/drop or paste HTML files → WASM processing")
+    print()
+    print("  How it works:")
+    print("    ServiceWorkers are trusted browser contexts. They CAN fetch")
+    print("    cross-origin URLs and read response bodies when responding to")
+    print("    navigation events. The SW rewrites all resource URLs to go")
+    print("    through the proxy path, keeping everything same-origin.")
+    print()
+    print("  smoltcp + Network Adapter (zero-relay networking):")
+    print("    Rust TCP/IP stack (smoltcp) → Ethernet frame → JS callback →")
+    print("    Network Adapter parses ARP/IP/TCP → SW postMessage →")
+    print("    SW fetch() → Internet → SW postMessage → feed back to smoltcp")
+    print()
+    print("  To run locally:")
     print("    python3 server.py")
-    print("    http://localhost:8080/neptune.svg?url=https://example.com")
+    print("    http://localhost:8080/neptune.svg")
     print()
     print("  To deploy to GitHub Pages / jsDelivr:")
     print("    git add neptune.svg && git commit && git push")
     print("    The SVG is self-contained — no other files needed")
-    print("    (But proxy still requires a local server.py or hosted proxy)")
     print("=" * 50)
 
 if __name__ == "__main__":

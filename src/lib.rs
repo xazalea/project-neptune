@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
+pub mod network;
+
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
@@ -23,7 +25,7 @@ extern "C" {
     fn console_error(s: &str);
 }
 
-fn console_log(msg: &str) { log(msg); }
+pub(crate) fn console_log(msg: &str) { log(msg); }
 
 // ==========================
 // Kernel State
@@ -134,7 +136,7 @@ impl NeptuneKernel {
     // ==========================
 
     /// Parse HTML into structured nodes, build resource graph
-    pub fn parse_dom(&mut self, html: &str, base_url: &str) -> Result<String, JsValue> {
+    pub fn parse_dom(&mut self, html: &str, _base_url: &str) -> Result<String, JsValue> {
         let mut state = KERNEL_STATE.lock().unwrap();
         state.request_count += 1;
         let count = state.request_count;
@@ -143,7 +145,7 @@ impl NeptuneKernel {
         console_log(&format!("[KERNEL] DOM parse #{}: {} bytes", count, html.len()));
 
         let mut graph = ResourceGraph::default();
-        let mut transformed = html.to_string();
+        let _transformed = html.to_string();
 
         // Parse with tl
         match tl::parse(html, tl::ParserOptions::default()) {
@@ -245,7 +247,7 @@ impl NeptuneKernel {
     }
 
     /// Transform HTML with resource graph awareness
-    pub fn transform_html_advanced(&mut self, html: &str, target_url: &str, origin: &str, proxy_prefix: &str) -> String {
+    pub fn transform_html_advanced(&mut self, html: &str, target_url: &str, _origin: &str, proxy_prefix: &str) -> String {
         console_log("[KERNEL] Advanced HTML transformation");
 
         let mut graph = ResourceGraph::default();
@@ -315,8 +317,7 @@ impl NeptuneKernel {
             }
         }
 
-        // Rewrite remaining URLs
-        out = out.replace(&format!("href=\"{}\"", target_url), &format!("href=\"{}\"", proxy_prefix));
+        // Rewrite URLs in attributes to proxy prefix
         out = rewrite_attr(&out, "href", &to_proxy, &target_origin);
         out = rewrite_attr(&out, "src", &to_proxy, &target_origin);
         out = rewrite_attr(&out, "action", &to_proxy, &target_origin);

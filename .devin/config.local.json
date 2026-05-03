@@ -14,7 +14,9 @@
       "Exec(true)",
       "Exec(head)",
       "Exec(tail)",
-      "Exec(ls)"
+      "Exec(ls)",
+      "Exec(netstat)",
+      "Exec(node)"
     ]
   }
 }

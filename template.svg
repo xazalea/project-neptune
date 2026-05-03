@@ -11,35 +11,168 @@
   <foreignObject x="0" y="0" width="1200" height="800">
     <div xmlns="http://www.w3.org/1999/xhtml" id="root"
          style="width:100%;height:100%;display:flex;flex-direction:column;
-                font-family:'SF Mono','Fira Code',monospace;color:#00ff88;
-                overflow:hidden;background:transparent;">
-      <div id="term" style="flex:0 0 auto;max-height:180px;overflow-y:auto;
-                  padding:10px 14px;font-size:12px;line-height:1.5;
-                  background:rgba(10,10,15,0.95);border-bottom:1px solid #1a1a2e;">
+                font-family:'SF Mono','Fira Code',monospace,Consolas,monospace;
+                color:#ccc;overflow:hidden;background:#0a0a0f;">
+
+      <!-- ====== CHROME BAR ====== -->
+      <div id="chrome" style="flex:0 0 auto;display:flex;align-items:center;
+                  padding:4px 8px;background:#111;border-bottom:1px solid #1a1a2e;gap:4px;min-height:38px;">
+        <!-- Nav -->
+        <div style="display:flex;gap:2px;flex-shrink:0;">
+          <button id="btn-back" title="Back (Alt+←)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">←</button>
+          <button id="btn-forward" title="Forward (Alt+→)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">→</button>
+          <button id="btn-refresh" title="Refresh (F5)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">↻</button>
+          <button id="btn-home" title="Home" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">⌂</button>
+          <button id="btn-undo" title="Reopen closed tab (Ctrl+Shift+T)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">↶</button>
+          <button id="btn-duplicate" title="Duplicate tab" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">⧉</button>
+        </div>
+
+        <!-- URL Bar -->
+        <div style="flex:1 1 auto;display:flex;align-items:center;background:#1a1a2e;border:1px solid #333;border-radius:3px;padding:2px 8px;gap:6px;min-width:0;">
+          <span id="url-lock" style="color:#ffaa00;font-size:10px;flex-shrink:0;">●</span>
+          <input id="url-bar" type="text" style="flex:1;background:transparent;border:none;color:#00ff88;font-family:inherit;font-size:12px;outline:none;min-width:0;" placeholder="Enter URL or search..." />
+          <span id="url-strategy" style="color:#555;font-size:9px;flex-shrink:0;display:none;">CORS</span>
+        </div>
+
+        <!-- Tools -->
+        <div style="display:flex;gap:2px;flex-shrink:0;">
+          <button id="btn-find" title="Find in page (Ctrl+F)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">🔍</button>
+          <button id="btn-zoom-out" title="Zoom out (Ctrl+-)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">−</button>
+          <button id="btn-zoom-reset" title="Zoom reset (Ctrl+0)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">100%</button>
+          <button id="btn-zoom-in" title="Zoom in (Ctrl++)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">+</button>
+          <button id="btn-reader" title="Reader Mode (Ctrl+Shift+R)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">📄</button>
+          <button id="btn-responsive" title="Responsive Tester (Ctrl+Shift+M)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">📱</button>
+          <button id="btn-screenshot" title="Screenshot (Ctrl+Shift+S)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">📷</button>
+          <button id="btn-bookmark" title="Bookmark (Ctrl+D)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">★</button>
+          <button id="btn-network" title="Network Inspector (Ctrl+Shift+I)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">⚡</button>
+          <button id="btn-console" title="Console (Ctrl+Shift+J)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">&gt;_</button>
+          <button id="btn-settings" title="Settings (Ctrl+,)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">⚙</button>
+          <button id="btn-fullscreen" title="Fullscreen (F11)" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">⛶</button>
+          <button id="btn-theme" title="Toggle Theme" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .15s;">◐</button>
+        </div>
       </div>
-      <div id="view" style="flex:1 1 auto;position:relative;overflow:hidden;">
-        <div id="ph" style="display:flex;align-items:center;justify-content:center;
-                    height:100%;color:#444;font-size:13px;flex-direction:column;">
-          <div id="ph-text">Neptune — waiting for boot...</div>
-          <div id="strategies" style="margin-top:8px;font-size:10px;color:#555;"></div>
-          <div id="input-form" style="display:none;margin-top:20px;">
-            <input id="url-input" type="text" placeholder="https://example.com"
-                   style="background:#1a1a2e;border:1px solid #333;color:#00ff88;
-                          padding:8px 12px;border-radius:3px;font-family:inherit;
-                          font-size:13px;width:300px;"
-                   onkeydown="if(event.key==='Enter')window.bootProxy()">
-            <button onclick="window.bootProxy()"
-                    style="background:#00ff88;color:#0a0a0f;border:none;
-                           padding:8px 16px;border-radius:3px;font-family:inherit;
-                           font-size:13px;font-weight:bold;cursor:pointer;
-                           margin-left:6px;">Boot Proxy</button>
+
+      <!-- ====== TABS BAR ====== -->
+      <div id="tabs-bar" style="flex:0 0 auto;display:none;background:#0f0f1a;border-bottom:1px solid #1a1a2e;padding:2px 4px;gap:2px;overflow-x:auto;white-space:nowrap;">
+        <button id="btn-new-tab" title="New Tab (Ctrl+T)" style="background:transparent;border:1px solid #333;color:#555;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;flex-shrink:0;">+</button>
+      </div>
+
+      <!-- ====== RESPONSIVE BAR ====== -->
+      <div id="responsive-bar" style="flex:0 0 auto;display:none;background:#0f0f1a;border-bottom:1px solid #1a1a2e;padding:4px 8px;gap:6px;align-items:center;">
+        <span style="color:#555;font-size:10px;">Viewport:</span>
+        <button data-w="375" data-h="667" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">iPhone SE</button>
+        <button data-w="390" data-h="844" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">iPhone 14</button>
+        <button data-w="768" data-h="1024" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">iPad</button>
+        <button data-w="1280" data-h="800" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">Laptop</button>
+        <button data-w="100%" data-h="100%" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">Full</button>
+        <span style="flex:1"></span>
+        <input id="custom-w" type="text" placeholder="W" style="width:50px;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:2px 4px;border-radius:3px;font-family:inherit;font-size:10px;" />
+        <span style="color:#555;font-size:10px;">×</span>
+        <input id="custom-h" type="text" placeholder="H" style="width:50px;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:2px 4px;border-radius:3px;font-family:inherit;font-size:10px;" />
+        <button id="btn-custom-size" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">Apply</button>
+        <button id="btn-close-responsive" style="background:transparent;border:1px solid #333;color:#555;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">✕</button>
+      </div>
+
+      <!-- ====== VIEWPORT ====== -->
+      <div id="viewport" style="flex:1 1 auto;position:relative;overflow:hidden;background:#0a0a0f;">
+        <!-- Placeholder / landing -->
+        <div id="landing" style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;">
+          <div style="text-align:center;max-width:500px;">
+            <div style="font-size:28px;color:#00ff88;margin-bottom:8px;text-shadow:0 0 20px rgba(0,255,136,0.3);">project: neptune</div>
+            <div style="font-size:11px;color:#555;margin-bottom:24px;">v3.0.0 — Standalone SW Proxy Kernel · smoltcp WASM TCP/IP · Zero Dependencies</div>
+            <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">
+              <input id="landing-url" type="text" placeholder="https://example.com"
+                     style="background:#1a1a2e;border:1px solid #333;color:#00ff88;padding:8px 12px;border-radius:3px;font-family:inherit;font-size:13px;width:280px;outline:none;"
+                     onkeydown="if(event.key==='Enter')window.bootFromLanding()">
+              <button onclick="window.bootFromLanding()"
+                      style="background:#00ff88;color:#0a0a0f;border:none;padding:8px 16px;border-radius:3px;font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer;">Boot Proxy</button>
+            </div>
+            <div style="font-size:10px;color:#444;line-height:1.8;">
+              <div>🔬 SW Navigation Fetch — cross-origin HTML read &amp; rewrite</div>
+              <div>🔄 Resource URL Proxying — all assets stay same-origin</div>
+              <div>📄 Drag &amp; drop HTML files — local WASM rewrite</div>
+              <div>📋 Paste raw HTML — instant processing</div>
+            </div>
+            <div id="drop-zone" style="margin-top:20px;padding:20px;border:2px dashed #222;border-radius:4px;color:#444;font-size:11px;max-width:400px;margin-left:auto;margin-right:auto;">
+              <div>Drop an HTML file here</div>
+              <div style="margin-top:4px;color:#333;font-size:9px;">No network needed — WASM parses &amp; rewrites in-browser</div>
+            </div>
+            <div id="paste-area" style="margin-top:12px;">
+              <textarea id="html-paste" placeholder="Or paste raw HTML here..."
+                        style="background:#1a1a2e;border:1px solid #222;color:#888;padding:6px;border-radius:3px;font-family:inherit;font-size:10px;width:350px;height:50px;resize:vertical;outline:none;"></textarea>
+              <div style="margin-top:4px;">
+                <button onclick="window.pasteHTML()"
+                        style="background:#1a1a2e;border:1px solid #333;color:#00aa66;padding:3px 10px;border-radius:3px;font-family:inherit;font-size:10px;cursor:pointer;">Rewrite HTML</button>
+              </div>
+            </div>
+            <div id="quick-links" style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+              <!-- Populated from bookmarks -->
+            </div>
+          </div>
+        </div>
+        <!-- Tab iframes inserted here -->
+      </div>
+
+      <!-- ====== STATUS BAR ====== -->
+      <div id="status-bar" style="flex:0 0 auto;display:flex;align-items:center;padding:3px 8px;background:#0f0f1a;border-top:1px solid #1a1a2e;font-size:10px;color:#555;gap:12px;">
+        <span id="status-strategy">Strategy: —</span>
+        <span id="status-requests">Requests: 0</span>
+        <span id="status-bandwidth">Bandwidth: 0 B</span>
+        <span id="status-blocked">Blocked: 0</span>
+        <span id="status-loading" style="display:none;color:#ffaa00;">● Loading</span>
+        <span style="flex:1"></span>
+        <span id="status-version" style="cursor:pointer;" onclick="window.showShortcuts()">neptune v3.0.0</span>
+      </div>
+
+      <!-- ====== PANEL OVERLAY ====== -->
+      <div id="panel-overlay" style="display:none;position:absolute;top:38px;left:0;right:0;bottom:27px;background:rgba(10,10,15,0.98);z-index:100;border-top:1px solid #1a1a2e;flex-direction:column;">
+        <div id="panel-tabs" style="flex:0 0 auto;display:flex;padding:4px 8px;background:#111;border-bottom:1px solid #1a1a2e;gap:4px;">
+          <button data-panel="network" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">⚡ Network</button>
+          <button data-panel="console" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">&gt;_ Console</button>
+          <button data-panel="settings" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">⚙ Settings</button>
+          <button data-panel="bookmarks" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">★ Bookmarks</button>
+          <button data-panel="history" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">🕐 History</button>
+          <button data-panel="privacy" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">🔒 Privacy</button>
+          <button data-panel="downloads" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">↓ Downloads</button>
+          <button data-panel="tools" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">🔧 Tools</button>
+          <span style="flex:1"></span>
+          <button id="btn-close-panel" style="background:transparent;border:1px solid #333;color:#555;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">✕ Close</button>
+        </div>
+        <div id="panel-content" style="flex:1 1 auto;overflow:auto;padding:8px;font-size:11px;">
+          <!-- Panel content generated dynamically -->
+        </div>
+      </div>
+
+      <!-- ====== READER OVERLAY ====== -->
+      <div id="reader-overlay" style="display:none;position:absolute;top:38px;left:0;right:0;bottom:27px;background:#0a0a0f;z-index:90;flex-direction:column;">
+        <div style="flex:0 0 auto;display:flex;align-items:center;padding:6px 12px;background:#111;border-bottom:1px solid #1a1a2e;gap:8px;">
+          <span style="color:#00ff88;font-size:12px;font-weight:bold;">📄 Reader Mode</span>
+          <span style="flex:1"></span>
+          <button id="btn-reader-original" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">Original</button>
+          <button id="btn-close-reader" style="background:transparent;border:1px solid #333;color:#555;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">✕</button>
+        </div>
+        <div id="reader-content" style="flex:1 1 auto;overflow:auto;padding:20px 40px;max-width:700px;margin:0 auto;font-size:14px;line-height:1.7;color:#ccc;font-family:Georgia,serif;">
+          <!-- Reader content -->
+        </div>
+      </div>
+
+      <!-- ====== TOASTS ====== -->
+      <div id="toasts" style="position:absolute;bottom:32px;right:8px;z-index:200;display:flex;flex-direction:column;gap:4px;pointer-events:none;">
+      </div>
+
+      <!-- ====== SHORTCUTS MODAL ====== -->
+      <div id="shortcuts-modal" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:300;align-items:center;justify-content:center;">
+        <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:16px;max-width:420px;max-height:80%;overflow:auto;">
+          <h3 style="color:#00ff88;margin:0 0 12px 0;font-size:14px;">Keyboard Shortcuts</h3>
+          <div id="shortcuts-list" style="font-size:11px;line-height:1.8;color:#888;">
+            <!-- Populated dynamically -->
+          </div>
+          <div style="text-align:center;margin-top:12px;">
+            <button onclick="document.getElementById('shortcuts-modal').style.display='none';" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">Close</button>
           </div>
         </div>
       </div>
-      <div id="bar" style="flex:0 0 auto;padding:3px 14px;font-size:10px;
-                  background:#0f0f1a;color:#00aa66;border-top:1px solid #1a1a2e;">
-        [BOOT] project: neptune v0.2.1
-      </div>
+
     </div>
   </foreignObject>
 
@@ -48,196 +181,1550 @@
     (function(){
       'use strict';
 
-      // ====== EMBEDDED ARTIFACTS (injected by build.py) ======
-      var SW_CODE_B64   = "{{SW_CODE}}";
-      var WASM_JS_B64   = "{{WASM_JS}}";
-      var WASM_BIN_B64  = "{{WASM_BIN}}";
+      // ====== EMBEDDED ARTIFACTS ======
+      var SW_CODE_B64         = "{{SW_CODE}}";
+      var WASM_JS_B64         = "{{WASM_JS}}";
+      var WASM_BIN_B64        = "{{WASM_BIN}}";
+      var NETWORK_ADAPTER_B64 = "{{NETWORK_ADAPTER}}";
 
+      // ====== CONSTANTS ======
+      var APP_VERSION = '3.0.0';
       var L = { DBG:0, INF:1, WRN:2, ERR:3 };
       var C = ['#555','#00ff88','#ffaa00','#ff4444'];
-      var term = document.getElementById('term');
-      var bar  = document.getElementById('bar');
-      var view = document.getElementById('view');
-      var ph   = document.getElementById('ph');
-      var phText = document.getElementById('ph-text');
-      var strategiesDiv = document.getElementById('strategies');
-      var inputForm = document.getElementById('input-form');
-      var urlInput = document.getElementById('url-input');
+      var SHORTCUTS = {
+        'F5': 'Refresh page',
+        'Ctrl+L': 'Focus address bar',
+        'Ctrl+R': 'Refresh',
+        'Ctrl+T': 'New tab',
+        'Ctrl+W': 'Close tab',
+        'Ctrl+PageUp': 'Previous tab',
+        'Ctrl+PageDown': 'Next tab',
+        'Alt+←': 'Back',
+        'Alt+→': 'Forward',
+        'Ctrl+D': 'Bookmark current page',
+        'Ctrl+Shift+I': 'Toggle Network Inspector',
+        'Ctrl+Shift+J': 'Toggle Console',
+        'Ctrl+Shift+R': 'Toggle Reader Mode',
+        'Ctrl+Shift+M': 'Toggle Responsive Tester',
+        'Ctrl+Shift+S': 'Screenshot',
+        'Ctrl+,': 'Toggle Settings',
+        'Ctrl+H': 'Toggle History',
+        'Ctrl+B': 'Toggle Bookmarks',
+        'F11': 'Toggle Fullscreen',
+        'Ctrl+F': 'Find in page',
+        'Ctrl++': 'Zoom in',
+        'Ctrl+-': 'Zoom out',
+        'Ctrl+0': 'Zoom reset',
+        'Ctrl+Shift+T': 'Reopen closed tab',
+        'Escape': 'Close panels / Stop loading',
+      };
 
-      function log(l,msg){
-        var d=document.createElement('div');
-        d.style.color=C[l]; d.textContent=['[DBG] ','[INF] ','[WRN] ','[ERR] '][l]+msg;
-        term.appendChild(d); term.scrollTop=term.scrollHeight;
+      // ====== DOM REFS ======
+      var chrome      = document.getElementById('chrome');
+      var urlBar      = document.getElementById('url-bar');
+      var urlLock     = document.getElementById('url-lock');
+      var urlStrategy = document.getElementById('url-strategy');
+      var tabsBar     = document.getElementById('tabs-bar');
+      var viewport    = document.getElementById('viewport');
+      var landing     = document.getElementById('landing');
+      var statusBar   = document.getElementById('status-bar');
+      var panelOverlay= document.getElementById('panel-overlay');
+      var panelContent= document.getElementById('panel-content');
+      var readerOverlay=document.getElementById('reader-overlay');
+      var readerContent=document.getElementById('reader-content');
+      var toasts      = document.getElementById('toasts');
+      var responsiveBar=document.getElementById('responsive-bar');
+
+      // ====== STATE ======
+      var tabs = [];
+      var activeTabId = null;
+      var networkLog = [];
+      var downloads = [];
+      var consoleHistory = [];
+      var consoleIndex = 0;
+      var activePanel = null;
+      var isFullscreen = false;
+      var isDarkTheme = true;
+      var kernel = null;
+      var swReady = false;
+      var swConfig = {};
+      var zoomLevel = 1.0;
+      var closedTabs = [];
+      var findQuery = '';
+      var findMatches = [];
+      var findIndex = 0;
+
+      // ====== LOCALSTORAGE ======
+      var STORAGE_KEY = 'neptune_state_v1';
+      var storage = {
+        bookmarks: [],
+        history: [],
+        settings: {
+          userAgent: '',
+          customHeaders: '',
+          cookiesEnabled: true,
+          trackerBlocking: true,
+          cacheEnabled: true,
+          stripTrackers: true,
+          darkMode: false,
+          injectBridge: true,
+          jsEnabled: true,
+        },
+      };
+
+      function loadStorage() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed.bookmarks) storage.bookmarks = parsed.bookmarks;
+            if (parsed.history) storage.history = parsed.history;
+            if (parsed.settings) storage.settings = Object.assign(storage.settings, parsed.settings);
+          }
+        } catch(e) {}
       }
-      function status(msg){ bar.textContent=msg; log(L.INF,msg.replace(/^\[.*?\]\s*/,'')); }
-      function strategyStatus(list){
-        if(strategiesDiv) strategiesDiv.textContent = 'Strategies: ' + list.join(' | ');
+
+      function saveStorage() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(storage)); } catch(e) {}
       }
 
-      var params = new URLSearchParams(window.location.search);
-      var target = params.get('url');
-      var snapshot = params.get('state');
-      var proxyMode = params.has('__nptn');
+      loadStorage();
+      isDarkTheme = !storage.settings.darkMode; // toggle will flip it
 
-      if(proxyMode){ phText.textContent='Loading...'; return; }
-
-      log(L.INF,'========================================');
-      log(L.INF,'project: neptune v0.2.1');
-      log(L.INF,'========================================');
-      if(target) log(L.INF,'Target: '+target);
-      if(snapshot) log(L.INF,'Snapshot: '+atob(snapshot).length+' bytes');
-
-      strategyStatus(['detecting...']);
-
-      // ====== HELPER: blob from base64 string ======
-      function b64ToBlob(b64, mime){
-        var bytes = Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);});
-        return new Blob([bytes], {type:mime});
+      // ====== HELPERS ======
+      function log(l, msg) {
+        console.log(['[DBG]','[INF]','[WRN]','[ERR]'][l] + ' ' + msg);
       }
+
+      function toast(msg, type) {
+        var d = document.createElement('div');
+        var color = type === 'error' ? '#ff4444' : type === 'warn' ? '#ffaa00' : '#00ff88';
+        d.style.cssText = 'background:#111;border:1px solid '+color+';color:'+color+';padding:6px 12px;border-radius:3px;font-size:11px;pointer-events:auto;animation:__nptn_fadein 0.3s;max-width:280px;opacity:0;transition:opacity 0.3s;';
+        // Force reflow then fade in
+        requestAnimationFrame(function(){ d.style.opacity = '1'; });
+        d.textContent = msg;
+        toasts.appendChild(d);
+        setTimeout(function() { d.style.opacity = '0'; d.style.transition = 'opacity 0.5s'; setTimeout(function(){ if(d.parentNode)d.parentNode.removeChild(d); }, 500); }, 3000);
+      }
+
+      function formatBytes(b) {
+        if (!b || b < 0) return '0 B';
+        if (b < 1024) return b + ' B';
+        if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+        if (b < 1024*1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB';
+        return (b/(1024*1024*1024)).toFixed(1) + ' GB';
+      }
+
+      function formatDuration(ms) {
+        if (ms < 1000) return ms + ' ms';
+        return (ms/1000).toFixed(2) + ' s';
+      }
+
+      function b64ToBlob(b64, mime) {
+        var bytes = Uint8Array.from(atob(b64), function(c){ return c.charCodeAt(0); });
+        return new Blob([bytes], {type: mime});
+      }
+
+      function escapeHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+
+      function generateId() {
+        return 'tab_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      }
+
+      // ====== TAB MANAGEMENT ======
+      function duplicateTab() {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || !tab.url) { toast('No page to duplicate', 'warn'); return; }
+        createTab(tab.url, tab.title);
+      }
+
+      function undoCloseTab() {
+        if (closedTabs.length === 0) { toast('No recently closed tabs', 'warn'); return; }
+        var t = closedTabs.pop();
+        createTab(t.url, t.title);
+        toast('Reopened: ' + (t.title || t.url));
+      }
+
+      function createTab(url, title) {
+        var id = generateId();
+        var tab = {
+          id: id,
+          url: url || '',
+          title: title || (url ? 'Loading...' : 'New Tab'),
+          active: false,
+          history: url ? [url] : [],
+          historyIndex: url ? 0 : -1,
+          iframe: null,
+          loaded: false,
+          strategy: null,
+          startTime: Date.now(),
+        };
+        tabs.push(tab);
+        renderTabs();
+        if (url) activateTab(id);
+        else activateTab(id);
+        return tab;
+      }
+
+      function closeTab(id) {
+        var idx = tabs.findIndex(function(t){ return t.id === id; });
+        if (idx < 0) return;
+        var tab = tabs[idx];
+        if (tab.iframe && tab.iframe.parentNode) {
+          tab.iframe.parentNode.removeChild(tab.iframe);
+        }
+        // Save for undo
+        if (tab.url) {
+          closedTabs.unshift({ url: tab.url, title: tab.title || tab.url, time: Date.now() });
+          if (closedTabs.length > 10) closedTabs.pop();
+        }
+        tabs.splice(idx, 1);
+        if (activeTabId === id) {
+          if (tabs.length > 0) {
+            activateTab(tabs[Math.min(idx, tabs.length - 1)].id);
+          } else {
+            activeTabId = null;
+            showLanding();
+          }
+        }
+        renderTabs();
+      }
+
+      function activateTab(id) {
+        tabs.forEach(function(t){ t.active = false; if(t.iframe)t.iframe.style.display='none'; });
+        var tab = tabs.find(function(t){ return t.id === id; });
+        if (!tab) return;
+        tab.active = true;
+        activeTabId = id;
+        if (tab.iframe) {
+          tab.iframe.style.display = 'block';
+          landing.style.display = 'none';
+          applyZoom();
+        } else {
+          if (tab.url) {
+            loadTabContent(tab);
+          } else {
+            showLanding();
+          }
+        }
+        urlBar.value = tab.url || '';
+        urlBar.style.color = tab.url ? '#00ff88' : '#555';
+        renderTabs();
+        updateNavButtons();
+      }
+
+      function loadTabContent(tab) {
+        if (!tab.url) return;
+        if (tab.iframe && tab.iframe.parentNode) {
+          tab.iframe.parentNode.removeChild(tab.iframe);
+        }
+        landing.style.display = 'none';
+
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'width:100%;height:100%;border:none;background:#fff;position:absolute;top:0;left:0;';
+        iframe.sandbox = 'allow-scripts allow-forms allow-popups allow-same-origin allow-top-navigation allow-modals allow-downloads';
+        iframe.id = tab.id;
+
+        var u = new URL(window.location.href);
+        u.searchParams.set('__nptn', '1');
+        u.searchParams.set('url', tab.url);
+        iframe.src = u.toString();
+
+        tab.iframe = iframe;
+        tab.loaded = false;
+        tab.startTime = Date.now();
+        document.getElementById('status-loading').style.display = 'inline';
+
+        iframe.addEventListener('load', function(){
+          tab.loaded = true;
+          document.getElementById('status-loading').style.display = 'none';
+          try {
+            var doc = iframe.contentDocument;
+            if (doc) {
+              tab.title = doc.title || tab.url;
+            }
+          } catch(e) {}
+          renderTabs();
+          addHistory(tab.url, tab.title);
+          // Performance
+          var loadTime = Date.now() - tab.startTime;
+          toast('Loaded in ' + loadTime + ' ms');
+        });
+
+        viewport.appendChild(iframe);
+      }
+
+      function handleIframeMessage(e) {
+        if (!e.data || !e.data.__nptn) return;
+        var d = e.data;
+        var tab = tabs.find(function(t){ return t.active; });
+        if (!tab) return;
+
+        if (d.type === 'nav' && d.url) {
+          tab.url = d.url;
+          urlBar.value = d.url;
+          if (tab.historyIndex < tab.history.length - 1) {
+            tab.history = tab.history.slice(0, tab.historyIndex + 1);
+          }
+          tab.history.push(d.url);
+          tab.historyIndex++;
+        }
+        if (d.type === 'ready') {
+          if (d.title) tab.title = d.title;
+          if (d.url) tab.url = d.url;
+          renderTabs();
+        }
+        if (d.type === 'eval_result') {
+          addConsoleOutput(d.result !== null ? d.result : 'Error: ' + (d.error || 'unknown'), d.error ? 'error' : 'result');
+        }
+      }
+
+      function renderTabs() {
+        var existing = tabsBar.querySelectorAll('.tab-item');
+        existing.forEach(function(el){ el.remove(); });
+
+        tabs.forEach(function(tab) {
+          var btn = document.createElement('button');
+          btn.className = 'tab-item';
+          var title = tab.title || (tab.url ? tab.url.replace(/^https?:\/\//, '').substring(0, 20) : 'New Tab');
+          if (title.length > 20) title = title.substring(0, 18) + '...';
+          btn.textContent = title;
+          btn.title = tab.url || 'New Tab';
+          btn.style.cssText = 'background:' + (tab.active ? '#1a3a2e' : '#1a1a2e') +
+            ';border:1px solid ' + (tab.active ? '#004d33' : '#333') +
+            ';color:' + (tab.active ? '#00ff88' : '#888') +
+            ';padding:3px 10px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;position:relative;min-width:80px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+
+          btn.onclick = function(e) { if(e.target !== closeX) activateTab(tab.id); };
+
+          var closeX = document.createElement('span');
+          closeX.textContent = ' ×';
+          closeX.style.cssText = 'margin-left:6px;color:#555;cursor:pointer;font-size:10px;';
+          closeX.onclick = function(e) { e.stopPropagation(); closeTab(tab.id); };
+          btn.appendChild(closeX);
+
+          tabsBar.insertBefore(btn, document.getElementById('btn-new-tab'));
+        });
+
+        tabsBar.style.display = tabs.length > 0 ? 'flex' : 'none';
+      }
+
+      function updateNavButtons() {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        var back = document.getElementById('btn-back');
+        var fwd = document.getElementById('btn-forward');
+        if (tab) {
+          back.style.color = tab.historyIndex > 0 ? '#00ff88' : '#333';
+          back.style.borderColor = tab.historyIndex > 0 ? '#004d33' : '#333';
+          fwd.style.color = tab.historyIndex < tab.history.length - 1 ? '#00ff88' : '#333';
+          fwd.style.borderColor = tab.historyIndex < tab.history.length - 1 ? '#004d33' : '#333';
+        } else {
+          back.style.color = '#333'; fwd.style.color = '#333';
+          back.style.borderColor = '#333'; fwd.style.borderColor = '#333';
+        }
+      }
+
+      function showLanding() {
+        landing.style.display = 'flex';
+        tabs.forEach(function(t){ if(t.iframe)t.iframe.style.display='none'; });
+        urlBar.value = '';
+        updateQuickLinks();
+      }
+
+      function updateQuickLinks() {
+        var el = document.getElementById('quick-links');
+        el.innerHTML = '';
+        storage.bookmarks.slice(0, 8).forEach(function(bm) {
+          var a = document.createElement('a');
+          a.href = '#';
+          a.textContent = bm.title || bm.url;
+          a.style.cssText = 'color:#00aa66;text-decoration:none;font-size:10px;background:#1a1a2e;padding:3px 8px;border-radius:3px;border:1px solid #222;';
+          a.onclick = function(e) { e.preventDefault(); navigateTo(bm.url); };
+          el.appendChild(a);
+        });
+      }
+
+      // ====== NAVIGATION ======
+      function navigateTo(url, newTab) {
+        if (!url) return;
+        if (!url.startsWith('http')) url = 'https://' + url;
+
+        if (newTab) {
+          createTab(url);
+          return;
+        }
+
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab) {
+          tab = createTab(url);
+          return;
+        }
+        tab.url = url;
+        tab.title = 'Loading...';
+        tab.loaded = false;
+        tab.startTime = Date.now();
+        tab.history.push(url);
+        tab.historyIndex = tab.history.length - 1;
+        loadTabContent(tab);
+        renderTabs();
+        updateNavButtons();
+      }
+
+      function goBack() {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || tab.historyIndex <= 0) return;
+        tab.historyIndex--;
+        var url = tab.history[tab.historyIndex];
+        tab.url = url;
+        // For iframe mode we can't really go back in the iframe, so reload
+        loadTabContent(tab);
+        updateNavButtons();
+      }
+
+      function goForward() {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || tab.historyIndex >= tab.history.length - 1) return;
+        tab.historyIndex++;
+        var url = tab.history[tab.historyIndex];
+        tab.url = url;
+        loadTabContent(tab);
+        updateNavButtons();
+      }
+
+      function refresh() {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || !tab.url) return;
+        loadTabContent(tab);
+      }
+
+      // ====== HISTORY ======
+      function addHistory(url, title) {
+        if (!url) return;
+        storage.history.unshift({ url: url, title: title || url, time: Date.now() });
+        if (storage.history.length > 200) storage.history.pop();
+        saveStorage();
+      }
+
+      // ====== BOOKMARKS ======
+      function addBookmark() {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || !tab.url) { toast('No page to bookmark', 'warn'); return; }
+        var existing = storage.bookmarks.findIndex(function(b){ return b.url === tab.url; });
+        if (existing >= 0) {
+          storage.bookmarks.splice(existing, 1);
+          toast('Bookmark removed', 'warn');
+        } else {
+          storage.bookmarks.unshift({ url: tab.url, title: tab.title || tab.url, time: Date.now() });
+          toast('Bookmark added ★');
+        }
+        saveStorage();
+        updateQuickLinks();
+        renderBookmarksPanel();
+      }
+
+      // ====== NETWORK INSPECTOR ======
+      function addNetworkEntry(entry) {
+        networkLog.unshift(entry);
+        if (networkLog.length > 500) networkLog.pop();
+        if (activePanel === 'network') renderNetworkPanel();
+        updateStatusFromNetwork();
+      }
+
+      function updateStatusFromNetwork() {
+        var totalReq = networkLog.filter(function(e){ return e.strategy !== 'blocked' && e.strategy !== 'filter'; }).length;
+        var totalBlk = networkLog.filter(function(e){ return e.strategy === 'blocked' || e.strategy === 'filter'; }).length;
+        var totalBytes = networkLog.reduce(function(acc, e){ return acc + (e.size || 0); }, 0);
+        document.getElementById('status-requests').textContent = 'Requests: ' + totalReq;
+        document.getElementById('status-bandwidth').textContent = 'Bandwidth: ' + formatBytes(totalBytes);
+        document.getElementById('status-blocked').textContent = 'Blocked: ' + totalBlk;
+      }
+
+      // ====== PANELS ======
+      function showPanel(name) {
+        if (activePanel === name) { closePanel(); return; }
+        activePanel = name;
+        panelOverlay.style.display = 'flex';
+        var buttons = panelOverlay.querySelectorAll('#panel-tabs button[data-panel]');
+        buttons.forEach(function(btn) {
+          var isActive = btn.dataset.panel === name;
+          btn.style.background = isActive ? '#1a3a2e' : '#1a1a2e';
+          btn.style.borderColor = isActive ? '#004d33' : '#333';
+          btn.style.color = isActive ? '#00ff88' : '#888';
+        });
+
+        switch(name) {
+          case 'network': renderNetworkPanel(); break;
+          case 'console': renderConsolePanel(); break;
+          case 'settings': renderSettingsPanel(); break;
+          case 'bookmarks': renderBookmarksPanel(); break;
+          case 'history': renderHistoryPanel(); break;
+          case 'privacy': renderPrivacyPanel(); break;
+          case 'downloads': renderDownloadsPanel(); break;
+          case 'tools': renderToolsPanel(); break;
+        }
+      }
+
+      function closePanel() {
+        activePanel = null;
+        panelOverlay.style.display = 'none';
+      }
+
+      function renderNetworkPanel() {
+        var html = '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+          '<button onclick="window.clearNetworkLog()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">Clear</button>' +
+          '<button onclick="window.exportNetworkLog()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">Export JSON</button>' +
+          '<span style="flex:1"></span>' +
+          '<span style="color:#555;font-size:10px;">' + networkLog.length + ' entries</span>' +
+          '</div>';
+        html += '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
+        html += '<tr style="color:#555;border-bottom:1px solid #1a1a2e;"><th style="text-align:left;padding:4px;">Method</th><th style="text-align:left;padding:4px;">Status</th><th style="text-align:left;padding:4px;">URL</th><th style="text-align:left;padding:4px;">Type</th><th style="text-align:right;padding:4px;">Size</th><th style="text-align:right;padding:4px;">Time</th><th style="text-align:left;padding:4px;">Strategy</th></tr>';
+        networkLog.slice(0, 100).forEach(function(e) {
+          var statusColor = e.status >= 400 ? '#ff4444' : e.status >= 300 ? '#ffaa00' : e.status >= 200 ? '#00ff88' : '#888';
+          var stratColor = e.strategy === 'cache' ? '#00aa66' : e.strategy === 'blocked' || e.strategy === 'filter' ? '#ff4444' : '#00ff88';
+          html += '<tr style="border-bottom:1px solid #111;">';
+          html += '<td style="padding:3px 4px;color:#888;">' + escapeHtml(e.method || 'GET') + '</td>';
+          html += '<td style="padding:3px 4px;color:' + statusColor + ';">' + (e.status || '—') + '</td>';
+          html += '<td style="padding:3px 4px;color:#aaa;max-width:300px;overflow:hidden;text-overflow:ellipsis;" title="' + escapeHtml(e.url) + '">' + escapeHtml(e.url.substring(0, 60)) + '</td>';
+          html += '<td style="padding:3px 4px;color:#555;">' + escapeHtml((e.type || '').split(';')[0]) + '</td>';
+          html += '<td style="padding:3px 4px;color:#555;text-align:right;">' + formatBytes(e.size) + '</td>';
+          html += '<td style="padding:3px 4px;color:#555;text-align:right;">' + formatDuration(e.duration) + '</td>';
+          html += '<td style="padding:3px 4px;color:' + stratColor + ';">' + escapeHtml(e.strategy || '') + (e.fromCache ? ' (cached)' : '') + '</td>';
+          html += '</tr>';
+        });
+        html += '</table>';
+        panelContent.innerHTML = html;
+      }
+
+      function renderConsolePanel() {
+        var html = '<div style="display:flex;flex-direction:column;height:100%;">';
+        html += '<div id="console-output" style="flex:1 1 auto;overflow:auto;background:#0a0a0f;border:1px solid #1a1a2e;border-radius:3px;padding:6px;font-size:11px;line-height:1.5;margin-bottom:6px;">';
+        consoleHistory.forEach(function(item) {
+          var color = item.type === 'error' ? '#ff4444' : item.type === 'warn' ? '#ffaa00' : item.type === 'result' ? '#00ff88' : '#888';
+          html += '<div style="color:' + color + ';border-bottom:1px solid #111;padding:2px 0;">';
+          if (item.input) html += '<span style="color:#555;">&gt; ' + escapeHtml(item.input) + '</span><br>';
+          html += escapeHtml(String(item.output || '')) + '</div>';
+        });
+        html += '</div>';
+        html += '<div style="display:flex;gap:4px;">';
+        html += '<input id="console-input" type="text" placeholder="JavaScript expression..." style="flex:1;background:#1a1a2e;border:1px solid #333;color:#00ff88;padding:4px 8px;border-radius:3px;font-family:inherit;font-size:11px;outline:none;" onkeydown="if(event.key===\'Enter\')window.execConsole()">';
+        html += '<button onclick="window.execConsole()" style="background:#1a3a2e;border:1px solid #004d33;color:#00ff88;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">Run</button>';
+        html += '<button onclick="window.clearConsole()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">Clear</button>';
+        html += '</div>';
+        html += '<div style="margin-top:4px;color:#555;font-size:9px;">Execute in proxied page context (CORS mode only)</div>';
+        html += '</div>';
+        panelContent.innerHTML = html;
+      }
+
+      function renderSettingsPanel() {
+        var s = storage.settings;
+        var html = '<div style="max-width:500px;">';
+        html += '<h3 style="color:#00ff88;margin:0 0 12px 0;font-size:13px;">⚙ Proxy Settings</h3>';
+
+        html += '<div style="margin-bottom:12px;">';
+        html += '<label style="display:block;color:#888;font-size:10px;margin-bottom:4px;">User-Agent Override</label>';
+        html += '<input id="setting-ua" type="text" value="' + escapeHtml(s.userAgent || '') + '" placeholder="Leave empty for browser default" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:4px 8px;border-radius:3px;font-family:inherit;font-size:11px;">';
+        html += '</div>';
+
+        html += '<div style="margin-bottom:12px;">';
+        html += '<label style="display:block;color:#888;font-size:10px;margin-bottom:4px;">Custom Headers (JSON)</label>';
+        html += '<textarea id="setting-headers" placeholder=\'{ "X-Custom": "value" }\' style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:4px 8px;border-radius:3px;font-family:inherit;font-size:10px;height:60px;resize:vertical;">' + escapeHtml(s.customHeaders || '') + '</textarea>';
+        html += '</div>';
+
+        var toggles = [
+          { id: 'cookies', label: 'Cookie Jar', val: s.cookiesEnabled },
+          { id: 'trackers', label: 'Tracker Blocking', val: s.trackerBlocking },
+          { id: 'cache', label: 'Response Caching', val: s.cacheEnabled },
+          { id: 'strip', label: 'Strip Trackers from HTML', val: s.stripTrackers },
+          { id: 'bridge', label: 'Inject iframe Bridge', val: s.injectBridge },
+          { id: 'js', label: 'JavaScript Enabled', val: s.jsEnabled },
+        ];
+
+        toggles.forEach(function(t) {
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:4px 0;border-bottom:1px solid #111;">';
+          html += '<span style="color:#888;font-size:11px;">' + t.label + '</span>';
+          html += '<button id="toggle-' + t.id + '" onclick="window.toggleSetting(\'' + t.id + '\')" style="background:' + (t.val ? '#1a3a2e' : '#1a1a2e') + ';border:1px solid ' + (t.val ? '#004d33' : '#333') + ';color:' + (t.val ? '#00ff88' : '#555') + ';padding:2px 10px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;min-width:40px;">' + (t.val ? 'ON' : 'OFF') + '</button>';
+          html += '</div>';
+        });
+
+        html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+        html += '<button onclick="window.saveSettings()" style="background:#00ff88;color:#0a0a0f;border:none;padding:6px 14px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:bold;">Save Settings</button>';
+        html += '<button onclick="window.resetSettings()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:6px 14px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">Reset Defaults</button>';
+        html += '<button onclick="window.clearAllData()" style="background:#1a1a2e;border:1px solid #ff4444;color:#ff4444;padding:6px 14px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit;">Clear All Data</button>';
+        html += '</div>';
+        html += '</div>';
+        panelContent.innerHTML = html;
+      }
+
+      function renderBookmarksPanel() {
+        var html = '<h3 style="color:#00ff88;margin:0 0 12px 0;font-size:13px;">★ Bookmarks (' + storage.bookmarks.length + ')</h3>';
+        if (storage.bookmarks.length === 0) {
+          html += '<div style="color:#555;font-size:11px;">No bookmarks yet. Press Ctrl+D to bookmark the current page.</div>';
+        }
+        html += '<div style="display:flex;flex-direction:column;gap:4px;">';
+        storage.bookmarks.forEach(function(bm, i) {
+          html += '<div style="display:flex;align-items:center;gap:8px;padding:6px;background:#111;border:1px solid #1a1a2e;border-radius:3px;">';
+          html += '<a href="#" onclick="window.navigateTo(\'' + escapeHtml(bm.url) + '\');return false;" style="color:#00aa66;text-decoration:none;font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(bm.url) + '">' + escapeHtml(bm.title || bm.url) + '</a>';
+          html += '<span style="color:#444;font-size:9px;flex-shrink:0;">' + new Date(bm.time).toLocaleDateString() + '</span>';
+          html += '<button onclick="window.deleteBookmark(' + i + ')" style="background:transparent;border:none;color:#ff4444;cursor:pointer;font-size:11px;flex-shrink:0;">✕</button>';
+          html += '</div>';
+        });
+        html += '</div>';
+        panelContent.innerHTML = html;
+      }
+
+      function renderHistoryPanel() {
+        var html = '<h3 style="color:#00ff88;margin:0 0 12px 0;font-size:13px;">🕐 History (' + storage.history.length + ')</h3>';
+        html += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+        html += '<button onclick="window.clearHistory()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit;">Clear History</button>';
+        html += '</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:4px;">';
+        storage.history.slice(0, 50).forEach(function(h) {
+          html += '<div style="display:flex;align-items:center;gap:8px;padding:4px;background:#111;border-radius:3px;">';
+          html += '<a href="#" onclick="window.navigateTo(\'' + escapeHtml(h.url) + '\');return false;" style="color:#00aa66;text-decoration:none;font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(h.url) + '">' + escapeHtml(h.title || h.url) + '</a>';
+          html += '<span style="color:#444;font-size:9px;flex-shrink:0;">' + new Date(h.time).toLocaleTimeString() + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+        panelContent.innerHTML = html;
+      }
+
+      function renderPrivacyPanel() {
+        var trackers = networkLog.filter(function(e){ return e.type === 'tracker-blocked'; });
+        var blocked = networkLog.filter(function(e){ return e.strategy === 'blocked' || e.strategy === 'filter'; });
+        var html = '<h3 style="color:#00ff88;margin:0 0 12px 0;font-size:13px;">🔒 Privacy Dashboard</h3>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">';
+        html += '<div style="background:#111;border:1px solid #1a1a2e;border-radius:3px;padding:10px;text-align:center;"><div style="color:#ff4444;font-size:18px;font-weight:bold;">' + trackers.length + '</div><div style="color:#555;font-size:10px;">Trackers Blocked</div></div>';
+        html += '<div style="background:#111;border:1px solid #1a1a2e;border-radius:3px;padding:10px;text-align:center;"><div style="color:#ffaa00;font-size:18px;font-weight:bold;">' + blocked.length + '</div><div style="color:#555;font-size:10px;">URLs Filtered</div></div>';
+        html += '</div>';
+
+        html += '<div style="margin-bottom:8px;color:#888;font-size:11px;">Top blocked domains:</div>';
+        var domains = {};
+        trackers.forEach(function(e) {
+          try { var u = new URL(e.url); domains[u.hostname] = (domains[u.hostname] || 0) + 1; } catch(ex) {}
+        });
+        var sorted = Object.entries(domains).sort(function(a,b){ return b[1]-a[1]; }).slice(0, 10);
+        html += '<div style="display:flex;flex-direction:column;gap:3px;">';
+        sorted.forEach(function(d) {
+          html += '<div style="display:flex;justify-content:space-between;padding:3px 6px;background:#111;border-radius:2px;font-size:10px;"><span style="color:#888;">' + escapeHtml(d[0]) + '</span><span style="color:#ff4444;">' + d[1] + '</span></div>';
+        });
+        html += '</div>';
+
+        html += '<div style="margin-top:12px;padding:8px;background:#111;border:1px solid #1a1a2e;border-radius:3px;font-size:10px;color:#555;line-height:1.6;">';
+        html += 'Your browsing data is stored locally in your browser. No external servers receive your history, bookmarks, or cookies.<br>';
+        html += 'Tracker blocking uses pattern matching. Some trackers may slip through.<br>';
+        html += 'Cookies are simulated per-domain and not shared with the actual target server.';
+        html += '</div>';
+        panelContent.innerHTML = html;
+      }
+
+      function renderDownloadsPanel() {
+        var html = '<h3 style="color:#00ff88;margin:0 0 12px 0;font-size:13px;">↓ Downloads (' + downloads.length + ')</h3>';
+        if (downloads.length === 0) {
+          html += '<div style="color:#555;font-size:11px;">No downloads detected yet. When a server sends Content-Disposition: attachment, it will appear here.</div>';
+        }
+        html += '<div style="display:flex;flex-direction:column;gap:4px;">';
+        downloads.forEach(function(d) {
+          html += '<div style="display:flex;align-items:center;gap:8px;padding:6px;background:#111;border:1px solid #1a1a2e;border-radius:3px;">';
+          html += '<span style="color:#888;font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(d.url) + '">' + escapeHtml(d.filename) + '</span>';
+          html += '<span style="color:#555;font-size:9px;">' + escapeHtml(d.mime.split(';')[0]) + '</span>';
+          html += '<span style="color:#555;font-size:9px;">' + formatBytes(d.size) + '</span>';
+          html += '<a href="' + escapeHtml(d.url) + '" target="_blank" style="color:#00aa66;font-size:10px;text-decoration:none;">Open →</a>';
+          html += '</div>';
+        });
+        html += '</div>';
+        panelContent.innerHTML = html;
+      }
+
+      function renderToolsPanel() {
+        var html = '<h3 style="color:#00ff88;margin:0 0 12px 0;font-size:13px;">🔧 Developer Tools</h3>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+
+        // URL Encoder
+        html += '<div style="background:#111;border:1px solid #1a1a2e;border-radius:3px;padding:10px;">';
+        html += '<div style="color:#888;font-size:10px;margin-bottom:6px;">URL Encode / Decode</div>';
+        html += '<textarea id="tool-url-in" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:4px;border-radius:2px;font-family:inherit;font-size:10px;height:40px;resize:vertical;margin-bottom:4px;" placeholder="Enter text..."></textarea>';
+        html += '<div style="display:flex;gap:4px;">';
+        html += '<button onclick="window.toolUrlEncode()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:2px;cursor:pointer;font-size:10px;font-family:inherit;">Encode</button>';
+        html += '<button onclick="window.toolUrlDecode()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:2px;cursor:pointer;font-size:10px;font-family:inherit;">Decode</button>';
+        html += '</div>';
+        html += '<div id="tool-url-out" style="margin-top:4px;color:#00ff88;font-size:10px;word-break:break-all;"></div>';
+        html += '</div>';
+
+        // Base64
+        html += '<div style="background:#111;border:1px solid #1a1a2e;border-radius:3px;padding:10px;">';
+        html += '<div style="color:#888;font-size:10px;margin-bottom:6px;">Base64 Encode / Decode</div>';
+        html += '<textarea id="tool-b64-in" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:4px;border-radius:2px;font-family:inherit;font-size:10px;height:40px;resize:vertical;margin-bottom:4px;" placeholder="Enter text..."></textarea>';
+        html += '<div style="display:flex;gap:4px;">';
+        html += '<button onclick="window.toolB64Encode()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:2px;cursor:pointer;font-size:10px;font-family:inherit;">Encode</button>';
+        html += '<button onclick="window.toolB64Decode()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:2px;cursor:pointer;font-size:10px;font-family:inherit;">Decode</button>';
+        html += '</div>';
+        html += '<div id="tool-b64-out" style="margin-top:4px;color:#00ff88;font-size:10px;word-break:break-all;"></div>';
+        html += '</div>';
+
+        // JSON Formatter
+        html += '<div style="background:#111;border:1px solid #1a1a2e;border-radius:3px;padding:10px;">';
+        html += '<div style="color:#888;font-size:10px;margin-bottom:6px;">JSON Formatter</div>';
+        html += '<textarea id="tool-json-in" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:4px;border-radius:2px;font-family:inherit;font-size:10px;height:40px;resize:vertical;margin-bottom:4px;" placeholder="Paste JSON..."></textarea>';
+        html += '<button onclick="window.toolJsonFormat()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 8px;border-radius:2px;cursor:pointer;font-size:10px;font-family:inherit;">Format</button>';
+        html += '<div id="tool-json-out" style="margin-top:4px;color:#00ff88;font-size:10px;white-space:pre;overflow:auto;max-height:100px;"></div>';
+        html += '</div>';
+
+        // User Agent Info
+        html += '<div style="background:#111;border:1px solid #1a1a2e;border-radius:3px;padding:10px;">';
+        html += '<div style="color:#888;font-size:10px;margin-bottom:6px;">User Agent</div>';
+        html += '<div style="color:#ccc;font-size:10px;word-break:break-all;">' + escapeHtml(navigator.userAgent) + '</div>';
+        html += '<div style="color:#555;font-size:9px;margin-top:4px;">Platform: ' + escapeHtml(navigator.platform) + ' | Language: ' + escapeHtml(navigator.language) + '</div>';
+        html += '</div>';
+
+        // Export/Import
+        html += '<div style="background:#111;border:1px solid #1a1a2e;border-radius:3px;padding:10px;">';
+        html += '<div style="color:#888;font-size:10px;margin-bottom:6px;">Data Export / Import</div>';
+        html += '<button onclick="window.exportAllData()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:2px;cursor:pointer;font-size:10px;font-family:inherit;margin-right:4px;">Export JSON</button>';
+        html += '<button onclick="window.importAllData()" style="background:#1a1a2e;border:1px solid #333;color:#888;padding:3px 10px;border-radius:2px;cursor:pointer;font-size:10px;font-family:inherit;">Import JSON</button>';
+        html += '<textarea id="tool-import-area" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;padding:4px;border-radius:2px;font-family:inherit;font-size:10px;height:30px;resize:vertical;margin-top:4px;" placeholder="Paste JSON to import..."></textarea>';
+        html += '</div>';
+
+        html += '</div>';
+        panelContent.innerHTML = html;
+      }
+
+      // ====== CONSOLE EXECUTION ======
+      function addConsoleOutput(output, type, input) {
+        consoleHistory.push({ output: output, type: type, input: input });
+        if (activePanel === 'console') renderConsolePanel();
+      }
+
+      function execConsole() {
+        var inputEl = document.getElementById('console-input');
+        if (!inputEl) return;
+        var code = inputEl.value.trim();
+        if (!code) return;
+        inputEl.value = '';
+
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || !tab.iframe) {
+          addConsoleOutput('No active page to execute in', 'error', code);
+          return;
+        }
+
+        try {
+          tab.iframe.contentWindow.postMessage({ __nptn: true, type: 'eval', code: code, id: Date.now() }, '*');
+          addConsoleOutput('Sent to page...', 'info', code);
+        } catch(e) {
+          addConsoleOutput('Error: ' + e.message, 'error', code);
+        }
+      }
+
+      function clearConsole() {
+        consoleHistory = [];
+        if (activePanel === 'console') renderConsolePanel();
+      }
+
+      // ====== READER MODE ======
+      function toggleReaderMode() {
+        if (readerOverlay.style.display === 'flex') {
+          readerOverlay.style.display = 'none';
+          return;
+        }
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || !tab.iframe) { toast('No page loaded', 'warn'); return; }
+
+        try {
+          var doc = tab.iframe.contentDocument;
+          if (!doc) {
+            // Try via bridge
+            tab.iframe.contentWindow.postMessage({ __nptn: true, type: 'get_text' }, '*');
+            toast('Requested content via bridge...', 'info');
+            return;
+          }
+          var article = extractArticle(doc);
+          readerContent.innerHTML = article;
+          readerOverlay.style.display = 'flex';
+        } catch(e) {
+          toast('Reader mode requires CORS-friendly page', 'warn');
+        }
+      }
+
+      function extractArticle(doc) {
+        // Simple readability extraction
+        var title = doc.title || 'Untitled';
+        var html = '<h1 style="color:#00ff88;font-size:20px;margin-bottom:16px;font-family:inherit;">' + escapeHtml(title) + '</h1>';
+
+        // Try article element
+        var article = doc.querySelector('article');
+        if (article) {
+          html += sanitizeContent(article.innerHTML);
+          return html;
+        }
+
+        // Try main content areas
+        var selectors = ['main', '[role="main"]', '.content', '.post', '.entry', '.article'];
+        for (var i = 0; i < selectors.length; i++) {
+          var el = doc.querySelector(selectors[i]);
+          if (el) {
+            html += sanitizeContent(el.innerHTML);
+            return html;
+          }
+        }
+
+        // Fallback: longest paragraph cluster
+        var ps = doc.querySelectorAll('p');
+        var bestCluster = '';
+        var bestLen = 0;
+        for (var j = 0; j < ps.length; j++) {
+          var text = ps[j].textContent || '';
+          if (text.length > bestLen) {
+            bestLen = text.length;
+            bestCluster = ps[j].parentNode.innerHTML;
+          }
+        }
+        html += sanitizeContent(bestCluster);
+        return html;
+      }
+
+      function sanitizeContent(html) {
+        // Remove scripts, iframes, forms
+        return html.replace(/<script[\s\S]*?<\/script>/gi, '')
+                   .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+                   .replace(/<form[\s\S]*?<\/form>/gi, '')
+                   .replace(/on\w+="[^"]*"/gi, '');
+      }
+
+      // ====== RESPONSIVE TESTER ======
+      function toggleResponsive() {
+        if (responsiveBar.style.display === 'flex') {
+          responsiveBar.style.display = 'none';
+          setViewportSize('100%', '100%');
+        } else {
+          responsiveBar.style.display = 'flex';
+        }
+      }
+
+      function setViewportSize(w, h) {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || !tab.iframe) return;
+        if (w === '100%' && h === '100%') {
+          tab.iframe.style.width = '100%';
+          tab.iframe.style.height = '100%';
+          tab.iframe.style.position = 'absolute';
+          tab.iframe.style.left = '0';
+          tab.iframe.style.margin = '0';
+        } else {
+          tab.iframe.style.width = w + 'px';
+          tab.iframe.style.height = h + 'px';
+          tab.iframe.style.position = 'relative';
+          tab.iframe.style.left = '50%';
+          tab.iframe.style.marginLeft = '-' + (parseInt(w)/2) + 'px';
+        }
+      }
+
+      // ====== SCREENSHOT ======
+      function takeScreenshot() {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || !tab.iframe) { toast('No page loaded', 'warn'); return; }
+        try {
+          var canvas = document.createElement('canvas');
+          var ctx = canvas.getContext('2d');
+          // We can't screenshot cross-origin iframes, but we can try for CORS mode
+          canvas.width = tab.iframe.offsetWidth;
+          canvas.height = tab.iframe.offsetHeight;
+          ctx.fillStyle = '#0a0a0f';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#555';
+          ctx.font = '14px monospace';
+          ctx.fillText('Screenshot unavailable for cross-origin content.', 20, 30);
+          ctx.fillText('Use browser DevTools for full-page capture.', 20, 50);
+          var link = document.createElement('a');
+          link.download = 'neptune-screenshot-' + Date.now() + '.png';
+          link.href = canvas.toDataURL();
+          link.click();
+          toast('Screenshot saved (placeholder for cross-origin)');
+        } catch(e) {
+          toast('Screenshot failed: ' + e.message, 'error');
+        }
+      }
+
+      // ====== THEME ======
+      function toggleTheme() {
+        isDarkTheme = !isDarkTheme;
+        var root = document.getElementById('root');
+        if (!isDarkTheme) {
+          root.style.background = '#f5f5f5';
+          root.style.color = '#333';
+          // Update chrome
+          document.getElementById('chrome').style.background = '#e0e0e0';
+          document.getElementById('chrome').style.borderColor = '#ccc';
+          urlBar.style.background = '#fff';
+          urlBar.style.color = '#0066cc';
+          landing.style.background = '#f5f5f5';
+          statusBar.style.background = '#e8e8e8';
+          statusBar.style.borderColor = '#ccc';
+          toast('Light theme');
+        } else {
+          root.style.background = '#0a0a0f';
+          root.style.color = '#ccc';
+          document.getElementById('chrome').style.background = '#111';
+          document.getElementById('chrome').style.borderColor = '#1a1a2e';
+          urlBar.style.background = 'transparent';
+          urlBar.style.color = '#00ff88';
+          landing.style.background = '#0a0a0f';
+          statusBar.style.background = '#0f0f1a';
+          statusBar.style.borderColor = '#1a1a2e';
+          toast('Dark theme');
+        }
+      }
+
+      // ====== ZOOM ======
+      function zoomIn() {
+        zoomLevel = Math.min(zoomLevel + 0.1, 3.0);
+        applyZoom();
+        toast('Zoom: ' + Math.round(zoomLevel * 100) + '%');
+      }
+
+      function zoomOut() {
+        zoomLevel = Math.max(zoomLevel - 0.1, 0.3);
+        applyZoom();
+        toast('Zoom: ' + Math.round(zoomLevel * 100) + '%');
+      }
+
+      function zoomReset() {
+        zoomLevel = 1.0;
+        applyZoom();
+        toast('Zoom: 100%');
+      }
+
+      function applyZoom() {
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (tab && tab.iframe) {
+          tab.iframe.style.transform = 'scale(' + zoomLevel + ')';
+          tab.iframe.style.transformOrigin = 'top left';
+          tab.iframe.style.width = (100 / zoomLevel) + '%';
+          tab.iframe.style.height = (100 / zoomLevel) + '%';
+        }
+        document.getElementById('btn-zoom-reset').textContent = Math.round(zoomLevel * 100) + '%';
+      }
+
+      // ====== FIND IN PAGE ======
+      function findInPage() {
+        var query = prompt('Find in page:');
+        if (!query) return;
+        findQuery = query;
+        var tab = tabs.find(function(t){ return t.id === activeTabId; });
+        if (!tab || !tab.iframe) { toast('No page loaded', 'warn'); return; }
+        try {
+          var doc = tab.iframe.contentDocument;
+          if (!doc) {
+            toast('Find requires CORS-friendly page', 'warn');
+            return;
+          }
+          // Clear previous highlights
+          var prev = doc.querySelectorAll('.__nptn_find');
+          for (var i = 0; i < prev.length; i++) {
+            var el = prev[i];
+            var parent = el.parentNode;
+            if (parent) {
+              parent.replaceChild(doc.createTextNode(el.textContent), el);
+              parent.normalize();
+            }
+          }
+          // Simple text search and highlight — collect nodes first to avoid live TreeWalker issues
+          var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
+          var textNodes = [];
+          var node;
+          while (node = walker.nextNode()) { textNodes.push(node); }
+          findMatches = [];
+          for (var i = 0; i < textNodes.length; i++) {
+            var n = textNodes[i];
+            var text = n.textContent;
+            var idx = text.toLowerCase().indexOf(query.toLowerCase());
+            if (idx >= 0) {
+              try {
+                var span = doc.createElement('span');
+                span.className = '__nptn_find';
+                span.style.cssText = 'background:#ffaa00;color:#000;padding:1px 2px;border-radius:2px;';
+                var range = doc.createRange();
+                range.setStart(n, idx);
+                range.setEnd(n, idx + query.length);
+                range.surroundContents(span);
+                findMatches.push(span);
+              } catch(ex) {
+                // Node may cross element boundaries — skip silently
+              }
+            }
+          }
+          if (findMatches.length > 0) {
+            findIndex = 0;
+            findMatches[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            toast('Found ' + findMatches.length + ' matches');
+          } else {
+            toast('No matches for "' + query + '"', 'warn');
+          }
+        } catch(e) {
+          toast('Find failed: ' + e.message, 'error');
+        }
+      }
+
+      // ====== FULLSCREEN ======
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().then(function(){
+            isFullscreen = true;
+            chrome.style.display = 'none';
+            statusBar.style.display = 'none';
+            tabsBar.style.display = 'none';
+          }).catch(function(){});
+        } else {
+          document.exitFullscreen().then(function(){
+            isFullscreen = false;
+            chrome.style.display = 'flex';
+            statusBar.style.display = 'flex';
+            if (tabs.length > 0) tabsBar.style.display = 'flex';
+          }).catch(function(){});
+        }
+      }
+
+      // ====== SETTINGS ACTIONS ======
+      function toggleSetting(id) {
+        var map = { cookies:'cookiesEnabled', trackers:'trackerBlocking', cache:'cacheEnabled', strip:'stripTrackers', bridge:'injectBridge', js:'jsEnabled' };
+        var key = map[id];
+        if (!key) return;
+        storage.settings[key] = !storage.settings[key];
+        saveStorage();
+        renderSettingsPanel();
+        syncConfigToSW();
+      }
+
+      function saveSettings() {
+        var ua = document.getElementById('setting-ua');
+        var headers = document.getElementById('setting-headers');
+        if (ua) storage.settings.userAgent = ua.value;
+        if (headers) storage.settings.customHeaders = headers.value;
+        saveStorage();
+        syncConfigToSW();
+        toast('Settings saved');
+      }
+
+      function resetSettings() {
+        storage.settings = {
+          userAgent: '', customHeaders: '', cookiesEnabled: true,
+          trackerBlocking: true, cacheEnabled: true, stripTrackers: true,
+          injectBridge: true, jsEnabled: true,
+        };
+        saveStorage();
+        renderSettingsPanel();
+        syncConfigToSW();
+        toast('Settings reset');
+      }
+
+      function clearAllData() {
+        if (!confirm('Clear all bookmarks, history, settings, and cookies?')) return;
+        storage.bookmarks = [];
+        storage.history = [];
+        storage.settings = { userAgent:'', customHeaders:'', cookiesEnabled:true, trackerBlocking:true, cacheEnabled:true, stripTrackers:true, injectBridge:true, jsEnabled:true };
+        saveStorage();
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_LOG' });
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+          navigator.serviceWorker.controller.postMessage({ type: 'PURGE_COOKIES' });
+        }
+        networkLog = [];
+        downloads = [];
+        toast('All data cleared');
+        updateQuickLinks();
+      }
+
+      function syncConfigToSW() {
+        if (!navigator.serviceWorker.controller) return;
+        var s = storage.settings;
+        var customHeaders = {};
+        try { if (s.customHeaders) customHeaders = JSON.parse(s.customHeaders); } catch(e) {}
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SET_CONFIG',
+          userAgent: s.userAgent || null,
+          customHeaders: customHeaders,
+          cookiesEnabled: s.cookiesEnabled,
+          trackerBlocking: s.trackerBlocking,
+          cacheEnabled: s.cacheEnabled,
+          stripTrackers: s.stripTrackers,
+          injectBridge: s.injectBridge,
+        });
+      }
+
+      // ====== BOOKMARK ACTIONS ======
+      function deleteBookmark(idx) {
+        storage.bookmarks.splice(idx, 1);
+        saveStorage();
+        updateQuickLinks();
+        renderBookmarksPanel();
+        toast('Bookmark deleted');
+      }
+
+      function clearHistory() {
+        storage.history = [];
+        saveStorage();
+        renderHistoryPanel();
+        toast('History cleared');
+      }
+
+      // ====== NETWORK ACTIONS ======
+      function clearNetworkLog() {
+        networkLog = [];
+        renderNetworkPanel();
+        updateStatusFromNetwork();
+      }
+
+      function exportNetworkLog() {
+        var blob = new Blob([JSON.stringify(networkLog, null, 2)], {type: 'application/json'});
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'neptune-network-log-' + Date.now() + '.json';
+        link.click();
+        toast('Network log exported');
+      }
+
+      // ====== TOOL FUNCTIONS ======
+      function toolUrlEncode() {
+        var val = document.getElementById('tool-url-in').value;
+        document.getElementById('tool-url-out').textContent = encodeURIComponent(val);
+      }
+      function toolUrlDecode() {
+        try {
+          document.getElementById('tool-url-out').textContent = decodeURIComponent(document.getElementById('tool-url-in').value);
+        } catch(e) { document.getElementById('tool-url-out').textContent = 'Error: ' + e.message; }
+      }
+      function toolB64Encode() {
+        try { document.getElementById('tool-b64-out').textContent = btoa(document.getElementById('tool-b64-in').value); }
+        catch(e) { document.getElementById('tool-b64-out').textContent = 'Error: ' + e.message; }
+      }
+      function toolB64Decode() {
+        try { document.getElementById('tool-b64-out').textContent = atob(document.getElementById('tool-b64-in').value); }
+        catch(e) { document.getElementById('tool-b64-out').textContent = 'Error: ' + e.message; }
+      }
+      function toolJsonFormat() {
+        try {
+          var obj = JSON.parse(document.getElementById('tool-json-in').value);
+          document.getElementById('tool-json-out').textContent = JSON.stringify(obj, null, 2);
+        } catch(e) { document.getElementById('tool-json-out').textContent = 'Error: ' + e.message; }
+      }
+      function exportAllData() {
+        var blob = new Blob([JSON.stringify(storage, null, 2)], {type: 'application/json'});
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'neptune-backup-' + Date.now() + '.json';
+        link.click();
+        toast('All data exported');
+      }
+      function importAllData() {
+        try {
+          var raw = document.getElementById('tool-import-area').value;
+          var parsed = JSON.parse(raw);
+          if (parsed.bookmarks) storage.bookmarks = parsed.bookmarks;
+          if (parsed.history) storage.history = parsed.history;
+          if (parsed.settings) storage.settings = Object.assign(storage.settings, parsed.settings);
+          saveStorage();
+          updateQuickLinks();
+          toast('Data imported successfully');
+        } catch(e) { toast('Import failed: ' + e.message, 'error'); }
+      }
+
+      // ====== DRAG & DROP / PASTE ======
+      function setupDragDrop() {
+        var dz = document.getElementById('drop-zone');
+        if (!dz) return;
+        dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.style.borderColor='#00ff88'; dz.style.color='#00ff88'; });
+        dz.addEventListener('dragleave', function(e){ e.preventDefault(); dz.style.borderColor='#222'; dz.style.color='#444'; });
+        dz.addEventListener('drop', function(e){
+          e.preventDefault(); dz.style.borderColor='#222'; dz.style.color='#444';
+          var files = e.dataTransfer.files;
+          if (!files.length) return;
+          var f = files[0];
+          if (f.type !== 'text/html' && !f.name.endsWith('.html') && !f.name.endsWith('.htm')) {
+            toast('Not an HTML file: ' + f.name, 'warn'); return;
+          }
+          var reader = new FileReader();
+          reader.onload = function(ev) {
+            var html = ev.target.result;
+            toast('Loaded ' + f.name + ' (' + formatBytes(html.length) + ')');
+            if (kernel && kernel.transformHtmlAdvanced) {
+              try {
+                var transformed = kernel.transformHtmlAdvanced(html, 'https://example.com', window.location.origin, window.location.origin + '/proxy');
+                toast('WASM rewrite: ' + formatBytes(transformed.length));
+                renderLocalHTML(transformed);
+              } catch(ex) { toast('WASM transform failed: ' + ex.message, 'error'); renderLocalHTML(html); }
+            } else { renderLocalHTML(html); }
+          };
+          reader.readAsText(f);
+        });
+      }
+
+      function renderLocalHTML(html) {
+        landing.style.display = 'none';
+        var existing = viewport.querySelector('iframe.local-render');
+        if (existing) existing.remove();
+        var iframe = document.createElement('iframe');
+        iframe.className = 'local-render';
+        iframe.style.cssText = 'width:100%;height:100%;border:none;background:#fff;position:absolute;top:0;left:0;';
+        iframe.sandbox = 'allow-scripts allow-forms allow-popups allow-same-origin';
+        iframe.srcdoc = html;
+        viewport.appendChild(iframe);
+      }
+
+      window.pasteHTML = function() {
+        var ta = document.getElementById('html-paste');
+        if (!ta || !ta.value.trim()) return;
+        var html = ta.value;
+        toast('Pasted HTML: ' + formatBytes(html.length));
+        if (kernel && kernel.transformHtmlAdvanced) {
+          try {
+            var transformed = kernel.transformHtmlAdvanced(html, 'https://example.com', window.location.origin, window.location.origin + '/proxy');
+            toast('WASM rewrite: ' + formatBytes(transformed.length));
+            renderLocalHTML(transformed);
+          } catch(ex) { toast('WASM failed: ' + ex.message, 'error'); renderLocalHTML(html); }
+        } else { renderLocalHTML(html); }
+      };
 
       // ====== WASM KERNEL ======
-      var kernel = null;
+      var netStack = null;
+      var netAdapter = null;
 
-      async function loadWASM(){
-        if(!WASM_JS_B64 || WASM_JS_B64==="{{WASM_JS}}"){
-          log(L.WRN,'WASM JS glue not embedded'); return false;
-        }
-        if(!WASM_BIN_B64 || WASM_BIN_B64==="{{WASM_BIN}}"){
-          log(L.WRN,'WASM binary not embedded'); return false;
-        }
-        try{
-          status('[BOOT] Loading WASM kernel...');
+      async function loadWASM() {
+        if (!WASM_JS_B64 || WASM_JS_B64 === "{{WASM_JS}}") { log(L.WRN, 'WASM JS glue not embedded'); return false; }
+        if (!WASM_BIN_B64 || WASM_BIN_B64 === "{{WASM_BIN}}") { log(L.WRN, 'WASM binary not embedded'); return false; }
+        try {
           var jsBlob = b64ToBlob(WASM_JS_B64, 'text/javascript');
           var jsURL = URL.createObjectURL(jsBlob);
-          var wasmBytes = Uint8Array.from(atob(WASM_BIN_B64), function(c){return c.charCodeAt(0);});
-          var wasmResp = new Response(wasmBytes.buffer, {headers:{'Content-Type':'application/wasm'}});
-          log(L.INF,'WASM JS: '+jsBlob.size+' bytes, binary: '+wasmBytes.length+' bytes');
+          var wasmBytes = Uint8Array.from(atob(WASM_BIN_B64), function(c){ return c.charCodeAt(0); });
+          var wasmResp = new Response(wasmBytes.buffer, { headers: {'Content-Type':'application/wasm'} });
+          log(L.INF, 'WASM JS: ' + jsBlob.size + ' bytes, binary: ' + wasmBytes.length + ' bytes');
           var mod = await import(jsURL);
           await mod.default(wasmResp);
           kernel = new mod.NeptuneKernel();
-          if(snapshot) kernel.deserialize_state(atob(snapshot));
-          log(L.INF,'WASM kernel ready');
+          log(L.INF, 'WASM kernel ready');
+
+          // Initialize smoltcp network stack (Phase 3)
+          try {
+            // Pass placeholder TX callback; replaced by NetworkAdapter via setTxCallback
+            netStack = new mod.NeptuneNetStack(function(){});
+            log(L.INF, 'smoltcp TCP/IP stack initialized');
+          } catch(e) {
+            log(L.WRN, 'smoltcp stack init skipped: ' + e.message);
+          }
+
           return true;
-        }catch(e){
-          log(L.ERR,'WASM load failed: '+e.message);
+        } catch(e) {
+          log(L.ERR, 'WASM load failed: ' + e.message);
           console.error(e);
           return false;
         }
       }
 
-      // ====== SERVICE WORKER (from embedded blob) ======
-      async function bootSW(){
-        if(!('serviceWorker' in navigator)){
-          log(L.ERR,'Service Workers not supported'); return false;
+      // ====== NETWORK ADAPTER BOOTSTRAP ======
+      function loadNetworkAdapter() {
+        if (!NETWORK_ADAPTER_B64 || NETWORK_ADAPTER_B64 === "{{NETWORK_ADAPTER}}") {
+          log(L.WRN, 'Network adapter JS not embedded');
+          return false;
         }
-        try{
-          if(!SW_CODE_B64 || SW_CODE_B64==="{{SW_CODE}}"){
-            log(L.ERR,'SW code not embedded'); return false;
-          }
-          status('[BOOT] Registering Service Worker...');
-          var swBlob = b64ToBlob(SW_CODE_B64, 'application/javascript');
-          var swURL = URL.createObjectURL(swBlob);
-          log(L.INF,'SW blob: '+swBlob.size+' bytes');
+        try {
+          var code = atob(NETWORK_ADAPTER_B64);
+          // Execute the network adapter code (it registers window.NetworkAdapter)
+          eval(code);
+          log(L.INF, 'Network adapter loaded (' + NETWORK_ADAPTER_B64.length + ' base64 chars)');
 
-          var reg = await navigator.serviceWorker.register(swURL, {
-            scope:'./', updateViaCache:'none'
-          });
-          log(L.INF,'SW scope: '+reg.scope);
-
-          await new Promise(function(r){
-            var sw=reg.installing||reg.waiting||reg.active;
-            if(!sw||sw.state==='activated'){r();return;}
-            sw.addEventListener('statechange',function(e){
-              log(L.INF,'SW state: '+e.target.state);
-              if(e.target.state==='activated')r();
+          // Wire up NetworkAdapter to smoltcp if available
+          if (typeof NetworkAdapter !== 'undefined' && netStack) {
+            netAdapter = new NetworkAdapter(netStack);
+            netStack.set_tx_callback(function(frame) {
+              netAdapter.handleTxFrame(frame);
             });
-          });
-
-          if(!navigator.serviceWorker.controller){
-            status('[BOOT] Waiting for controller...');
-            await new Promise(function(r){
-              navigator.serviceWorker.addEventListener('controllerchange',r,{once:true});
-            });
+            log(L.INF, 'NetworkAdapter bridged to smoltcp');
           }
-
-          navigator.serviceWorker.addEventListener('message', function(e){
-            if(e.data && e.data.type === 'STRATEGY_SELECTED'){
-              strategyStatus([e.data.strategy]);
-              log(L.INF,'Strategy: '+e.data.strategy);
-            }
-          });
-
-          log(L.INF,'SW controller active');
           return true;
-        }catch(e){
-          log(L.ERR,'SW failed: '+e.message);
-          status('[FAIL] '+e.message);
+        } catch(e) {
+          log(L.ERR, 'Network adapter load failed: ' + e.message);
           return false;
         }
       }
 
-      // ====== PROXY TUNNEL ======
-      async function startProxy(){
-        if(!target){
-          status('[READY] No target URL');
-          phText.textContent = 'Enter a target URL to start proxying';
-          phText.style.color = '#00ff88';
-          inputForm.style.display = 'block';
-          urlInput.focus();
-          return;
-        }
-        status('[PROXY] Tunneling to '+target);
+      // ====== SERVICE WORKER ======
+      async function bootSW() {
+        if (!('serviceWorker' in navigator)) { toast('Service Workers not supported', 'error'); return false; }
+        try {
+          if (!SW_CODE_B64 || SW_CODE_B64 === "{{SW_CODE}}") { toast('SW code not embedded', 'error'); return false; }
+          var swBlob = b64ToBlob(SW_CODE_B64, 'application/javascript');
+          var swURL = URL.createObjectURL(swBlob);
+          log(L.INF, 'SW blob: ' + swBlob.size + ' bytes');
 
-        if(navigator.serviceWorker.controller){
-          navigator.serviceWorker.controller.postMessage({
-            type:'SET_TARGET', url:target, snapshot:snapshot||null
+          var reg = await navigator.serviceWorker.register(swURL, { scope: './', updateViaCache: 'none' });
+          log(L.INF, 'SW scope: ' + reg.scope);
+
+          await new Promise(function(r){
+            var sw = reg.installing || reg.waiting || reg.active;
+            if (!sw || sw.state === 'activated') { r(); return; }
+            sw.addEventListener('statechange', function(e){ log(L.INF, 'SW state: ' + e.target.state); if (e.target.state === 'activated') r(); });
           });
+
+          if (!navigator.serviceWorker.controller) {
+            await new Promise(function(r){ navigator.serviceWorker.addEventListener('controllerchange', r, {once:true}); });
+          }
+
+          navigator.serviceWorker.addEventListener('message', handleSWMessage);
+          swReady = true;
+          log(L.INF, 'SW controller active');
+
+          // Sync config
+          syncConfigToSW();
+          return true;
+        } catch(e) {
+          toast('SW failed: ' + e.message, 'error');
+          return false;
         }
-
-        ph.remove();
-        var iframe = document.createElement('iframe');
-        iframe.style.cssText='width:100%;height:100%;border:none;background:#fff;';
-        iframe.sandbox='allow-scripts allow-forms allow-popups allow-same-origin';
-
-        var u = new URL(window.location.href);
-        u.searchParams.set('__nptn','1');
-        u.searchParams.set('url',target);
-        iframe.src = u.toString();
-
-        view.appendChild(iframe);
-        log(L.INF,'Proxy iframe loaded');
-        status('[LIVE] Proxy active — '+target);
       }
 
-      // ====== URL INPUT HANDLER ======
-      window.bootProxy = function(){
-        var val = urlInput.value.trim();
-        if(!val) return;
-        if(!val.startsWith('http')) val = 'https://' + val;
-        var u = new URL(window.location.href);
-        u.searchParams.set('url', val);
-        window.location.href = u.toString();
+      function handleSWMessage(e) {
+        var d = e.data;
+        if (!d || !d.type) return;
+        switch(d.type) {
+          case 'STRATEGY_SELECTED':
+            document.getElementById('status-strategy').textContent = 'Strategy: ' + d.strategy + (d.cors ? ' (CORS)' : '');
+            urlStrategy.style.display = 'inline';
+            urlStrategy.textContent = d.strategy.toUpperCase();
+            urlStrategy.style.color = d.cors ? '#00ff88' : '#ffaa00';
+            toast('Strategy: ' + d.strategy + (d.cors ? ' ✓' : ''));
+            break;
+          case 'REQUEST_LOG_ENTRY':
+            addNetworkEntry(d.entry);
+            break;
+          case 'DOWNLOAD_DETECTED':
+            downloads.unshift(d);
+            if (activePanel === 'downloads') renderDownloadsPanel();
+            toast('Download detected: ' + d.filename);
+            break;
+          case 'CONFIG_ACK':
+            swConfig = d.config;
+            break;
+          case 'STATS_DATA':
+            document.getElementById('status-requests').textContent = 'Requests: ' + d.totalRequests;
+            document.getElementById('status-bandwidth').textContent = 'Bandwidth: ' + formatBytes(d.totalBytes);
+            document.getElementById('status-blocked').textContent = 'Blocked: ' + d.blockedCount;
+            break;
+        }
+      }
+
+      // ====== URL INPUT ======
+      urlBar.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          var val = urlBar.value.trim();
+          if (!val) return;
+          if (val.startsWith('javascript:') || val.startsWith('data:')) { toast('Blocked protocol', 'warn'); return; }
+          if (!val.includes('://') && !val.startsWith('//')) {
+            // Search or add https
+            if (val.includes('.') && !val.includes(' ')) val = 'https://' + val;
+            else val = 'https://duckduckgo.com/html/?q=' + encodeURIComponent(val);
+          }
+          navigateTo(val);
+        }
+      });
+
+      // ====== CHROME BUTTONS ======
+      document.getElementById('btn-back').onclick = goBack;
+      document.getElementById('btn-forward').onclick = goForward;
+      document.getElementById('btn-refresh').onclick = refresh;
+      document.getElementById('btn-home').onclick = showLanding;
+      document.getElementById('btn-bookmark').onclick = addBookmark;
+      document.getElementById('btn-network').onclick = function(){ showPanel('network'); };
+      document.getElementById('btn-console').onclick = function(){ showPanel('console'); };
+      document.getElementById('btn-settings').onclick = function(){ showPanel('settings'); };
+      document.getElementById('btn-fullscreen').onclick = toggleFullscreen;
+      document.getElementById('btn-theme').onclick = toggleTheme;
+      document.getElementById('btn-reader').onclick = toggleReaderMode;
+      document.getElementById('btn-responsive').onclick = toggleResponsive;
+      document.getElementById('btn-screenshot').onclick = takeScreenshot;
+      document.getElementById('btn-new-tab').onclick = function(){ createTab(); };
+      document.getElementById('btn-close-panel').onclick = closePanel;
+      document.getElementById('btn-undo').onclick = undoCloseTab;
+      document.getElementById('btn-duplicate').onclick = duplicateTab;
+      document.getElementById('btn-zoom-out').onclick = zoomOut;
+      document.getElementById('btn-zoom-in').onclick = zoomIn;
+      document.getElementById('btn-zoom-reset').onclick = zoomReset;
+      document.getElementById('btn-find').onclick = findInPage;
+      document.getElementById('btn-close-reader').onclick = function(){ readerOverlay.style.display='none'; };
+      document.getElementById('btn-reader-original').onclick = function(){ readerOverlay.style.display='none'; };
+      document.getElementById('btn-close-responsive').onclick = function(){ responsiveBar.style.display='none'; setViewportSize('100%','100%'); };
+
+      // Panel tab buttons
+      panelOverlay.querySelectorAll('#panel-tabs button[data-panel]').forEach(function(btn) {
+        btn.onclick = function() { showPanel(btn.dataset.panel); };
+      });
+
+      // Responsive buttons
+      responsiveBar.querySelectorAll('button[data-w]').forEach(function(btn) {
+        btn.onclick = function() { setViewportSize(btn.dataset.w, btn.dataset.h); };
+      });
+      document.getElementById('btn-custom-size').onclick = function() {
+        var w = document.getElementById('custom-w').value;
+        var h = document.getElementById('custom-h').value;
+        if (w && h) setViewportSize(w, h);
+      };
+
+      // ====== KEYBOARD SHORTCUTS ======
+      document.addEventListener('keydown', function(e) {
+        // Ctrl+L → focus URL bar
+        if (e.ctrlKey && e.key === 'l') { e.preventDefault(); urlBar.focus(); urlBar.select(); }
+        // F5 → refresh
+        if (e.key === 'F5') { e.preventDefault(); refresh(); }
+        // Ctrl+R → refresh
+        if (e.ctrlKey && e.key === 'r') { e.preventDefault(); refresh(); }
+        // Ctrl+T → new tab
+        if (e.ctrlKey && e.key === 't') { e.preventDefault(); createTab(); }
+        // Ctrl+W → close tab
+        if (e.ctrlKey && e.key === 'w') { e.preventDefault(); var tab = tabs.find(function(t){return t.id===activeTabId}); if(tab)closeTab(tab.id); }
+        // Ctrl+Shift+T → reopen closed tab
+        if (e.ctrlKey && e.shiftKey && e.key === 't') { e.preventDefault(); undoCloseTab(); }
+        // Ctrl+PageUp / Ctrl+PageDown → switch Neptune tabs (avoid Ctrl+Tab browser conflict)
+        if (e.ctrlKey && e.key === 'PageUp') { e.preventDefault(); var idx = tabs.findIndex(function(t){return t.id===activeTabId}); if(idx>0)activateTab(tabs[idx-1].id); }
+        if (e.ctrlKey && e.key === 'PageDown') { e.preventDefault(); var idx = tabs.findIndex(function(t){return t.id===activeTabId}); if(idx<tabs.length-1)activateTab(tabs[idx+1].id); }
+        // Alt+Left/Right → back/forward
+        if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); }
+        if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); }
+        // Ctrl+D → bookmark
+        if (e.ctrlKey && e.key === 'd') { e.preventDefault(); addBookmark(); }
+        // F11 → fullscreen
+        if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); }
+        // Escape → close panels
+        if (e.key === 'Escape') {
+          if (panelOverlay.style.display === 'flex') closePanel();
+          else if (readerOverlay.style.display === 'flex') readerOverlay.style.display = 'none';
+          else if (responsiveBar.style.display === 'flex') { responsiveBar.style.display = 'none'; setViewportSize('100%','100%'); }
+        }
+        // Ctrl+Shift+I → network
+        if (e.ctrlKey && e.shiftKey && e.key === 'I') { e.preventDefault(); showPanel('network'); }
+        // Ctrl+Shift+J → console
+        if (e.ctrlKey && e.shiftKey && e.key === 'J') { e.preventDefault(); showPanel('console'); }
+        // Ctrl+Shift+R → reader
+        if (e.ctrlKey && e.shiftKey && e.key === 'R') { e.preventDefault(); toggleReaderMode(); }
+        // Ctrl+Shift+M → responsive
+        if (e.ctrlKey && e.shiftKey && e.key === 'M') { e.preventDefault(); toggleResponsive(); }
+        // Ctrl+Shift+S → screenshot
+        if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); takeScreenshot(); }
+        // Ctrl+, → settings
+        if (e.ctrlKey && e.key === ',') { e.preventDefault(); showPanel('settings'); }
+        // Ctrl+H → history
+        if (e.ctrlKey && e.key === 'h') { e.preventDefault(); showPanel('history'); }
+        // Ctrl+B → bookmarks
+        if (e.ctrlKey && e.key === 'b') { e.preventDefault(); showPanel('bookmarks'); }
+        // Ctrl+F → find
+        if (e.ctrlKey && e.key === 'f') { e.preventDefault(); findInPage(); }
+        // Ctrl++ → zoom in
+        if (e.ctrlKey && e.key === '=') { e.preventDefault(); zoomIn(); }
+        // Ctrl+- → zoom out
+        if (e.ctrlKey && e.key === '-') { e.preventDefault(); zoomOut(); }
+        // Ctrl+0 → zoom reset
+        if (e.ctrlKey && e.key === '0') { e.preventDefault(); zoomReset(); }
+      });
+
+      // ====== LANDING INPUT ======
+      window.bootFromLanding = function() {
+        var val = document.getElementById('landing-url').value.trim();
+        if (!val) return;
+        if (!val.startsWith('http')) val = 'https://' + val;
+        navigateTo(val);
+      };
+
+      // ====== SHORTCUTS MODAL ======
+      window.showShortcuts = function() {
+        var list = document.getElementById('shortcuts-list');
+        var html = '';
+        for (var key in SHORTCUTS) {
+          html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #1a1a2e;"><span style="color:#ccc;font-family:monospace;">' + escapeHtml(key) + '</span><span style="color:#555;">' + escapeHtml(SHORTCUTS[key]) + '</span></div>';
+        }
+        list.innerHTML = html;
+        document.getElementById('shortcuts-modal').style.display = 'flex';
       };
 
       // ====== EXPORT STATE ======
-      window.exportState = function(){
-        if(!kernel){ log(L.ERR,'WASM not loaded'); return null; }
-        try{
+      window.exportState = function() {
+        if (!kernel) { toast('WASM not loaded', 'error'); return null; }
+        try {
           var snap = kernel.create_snapshot();
           var u = new URL(window.location.href);
-          u.searchParams.set('state',snap);
-          log(L.INF,'Snapshot: '+snap.length+' chars');
+          u.searchParams.set('state', snap);
+          log(L.INF, 'Snapshot: ' + snap.length + ' chars');
           return u.toString();
-        }catch(e){ log(L.ERR,'Export failed: '+e.message); return null; }
+        } catch(e) { log(L.ERR, 'Export failed: ' + e.message); return null; }
       };
 
       // ====== BOOT SEQUENCE ======
-      async function boot(){
+      async function boot() {
+        // Register bridge message listener exactly once
+        window.addEventListener('message', handleIframeMessage);
+        setupDragDrop();
+        updateQuickLinks();
+
+        // Parse URL params
+        var params = new URLSearchParams(window.location.search);
+        var target = params.get('url') || params.get('') || null;
+        var snapshot = params.get('state');
+        var proxyMode = params.has('__nptn');
+
+        if (proxyMode) { landing.style.display = 'none'; return; }
+
+        log(L.INF, '========================================');
+        log(L.INF, 'project: neptune v' + APP_VERSION);
+        log(L.INF, '========================================');
+        if (target) log(L.INF, 'Target: ' + target);
+        if (snapshot) log(L.INF, 'Snapshot: ' + atob(snapshot).length + ' bytes');
+
         await loadWASM();
         var ok = await bootSW();
-        if(ok) await startProxy();
+
+        // Initialize network adapter after SW is ready
+        if (ok) {
+          loadNetworkAdapter();
+          if (netAdapter) {
+            netAdapter.start();
+            log(L.INF, 'NetworkAdapter started — smoltcp fetch()-based networking active');
+            toast('Network stack online', 'info');
+          }
+        }
+
+        if (ok && target) {
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'SET_TARGET', url: target, snapshot: snapshot || null });
+          }
+          createTab(target);
+        }
+
+        // Poll stats from SW
+        setInterval(function() {
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'GET_STATS' });
+          }
+        }, 2000);
       }
+
       boot();
+
+      // Expose functions to window for onclick handlers
+      window.navigateTo = navigateTo;
+      window.deleteBookmark = deleteBookmark;
+      window.clearHistory = clearHistory;
+      window.toggleSetting = toggleSetting;
+      window.saveSettings = saveSettings;
+      window.resetSettings = resetSettings;
+      window.clearAllData = clearAllData;
+      window.clearNetworkLog = clearNetworkLog;
+      window.exportNetworkLog = exportNetworkLog;
+      window.execConsole = execConsole;
+      window.clearConsole = clearConsole;
+      window.toolUrlEncode = toolUrlEncode;
+      window.toolUrlDecode = toolUrlDecode;
+      window.toolB64Encode = toolB64Encode;
+      window.toolB64Decode = toolB64Decode;
+      window.toolJsonFormat = toolJsonFormat;
+      window.exportAllData = exportAllData;
+      window.importAllData = importAllData;
     })();
     ]]>
   </script>
