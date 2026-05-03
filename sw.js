@@ -911,27 +911,27 @@ function transformHTML(html, targetUrl, origin, cfg) {
   'use strict';
   if(window.__nptn_injected)return;window.__nptn_injected=true;
   var base='${targetOrigin}', proxy='${proxyRoot}';
-  function p(u){if(!u||u.startsWith('data:')||u.startsWith('blob:'))return u;if((u.startsWith('http://')||u.startsWith('https://'))&&!u.includes(location.origin))return proxy+encodeURIComponent(u);if(u.startsWith('//'))return proxy+encodeURIComponent('https:'+u);if(u.startsWith('/')&&!u.startsWith('/proxy'))return proxy+encodeURIComponent(base+u);return u;}
+  function p(u){if(!u||u.startsWith('data:')||u.startsWith('blob:'))return u;if((u.startsWith('http://')||u.startsWith('https://'))&&!u.startsWith(location.origin))return proxy+encodeURIComponent(u);if(u.startsWith('//'))return proxy+encodeURIComponent('https:'+u);if(u.startsWith('/')&&!u.startsWith('/proxy'))return proxy+encodeURIComponent(base+u);return u;}
   var of=window.fetch;
   window.fetch=function(i,init){
     if(typeof i==='string'){
       var u=i;
-      if(u&&u.startsWith('http')&&!u.includes(location.origin))u=p(u);
+      if(u&&u.startsWith('http')&&!u.startsWith(location.origin))u=p(u);
       else if(u&&u.startsWith('/')&&!u.startsWith('/proxy'))u=p(u);
       return of(u,init);
     }
     if(i&&i.url){
       var u=i.url;
-      if(u&&u.startsWith('http')&&!u.includes(location.origin))u=p(u);
+      if(u&&u.startsWith('http')&&!u.startsWith(location.origin))u=p(u);
       else if(u&&u.startsWith('/')&&!u.startsWith('/proxy'))u=p(u);
       return of(new Request(u,i),init);
     }
     return of(i,init);
   };
   var ox=XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open=function(m,u,a,uu,pp){if(u&&u.startsWith('http')&&!u.includes(location.origin)){u=p(u);}else if(u&&u.startsWith('/')&&!u.startsWith('/proxy')){u=p(u);}return ox.call(this,m,u,a,uu,pp);};
+  XMLHttpRequest.prototype.open=function(m,u,a,uu,pp){if(u&&u.startsWith('http')&&!u.startsWith(location.origin)){u=p(u);}else if(u&&u.startsWith('/')&&!u.startsWith('/proxy')){u=p(u);}return ox.call(this,m,u,a,uu,pp);};
   document.addEventListener('click',function(e){var a=e.target.closest('a');if(!a)return;var h=a.getAttribute('href');if(h&&!h.startsWith('javascript:')&&!h.startsWith('#')&&!h.startsWith('mailto:')&&!h.startsWith('tel:')){if(h.startsWith('http')||h.startsWith('/')){a.setAttribute('href',p(h));}}},true);
-  document.addEventListener('submit',function(e){var f=e.target;if(f.tagName!=='FORM')return;var a=f.getAttribute('action');if(a&&a.startsWith('http')&&!a.includes(location.origin)){f.setAttribute('action',p(a));}else if(a&&a.startsWith('/')&&!a.startsWith('/proxy')){f.setAttribute('action',p(a));}},true);
+  document.addEventListener('submit',function(e){var f=e.target;if(f.tagName!=='FORM')return;var a=f.getAttribute('action');if(a&&a.startsWith('http')&&!a.startsWith(location.origin)){f.setAttribute('action',p(a));}else if(a&&a.startsWith('/')&&!a.startsWith('/proxy')){f.setAttribute('action',p(a));}},true);
   var op=history.pushState, or=history.replaceState;
   function patchHistory(orig){return function(){var args=Array.from(arguments);if(args.length>=3&&typeof args[2]==='string'){args[2]=p(args[2]);}return orig.apply(this,args);};}
   history.pushState=patchHistory(op);

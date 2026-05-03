@@ -97,54 +97,98 @@
       <!-- ====== VIEWPORT ====== -->
       <div id="viewport" style="flex:1 1 auto;position:relative;overflow:hidden;background:#0a0a0f;">
         <!-- Placeholder / landing -->
-        <div id="landing" style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;">
-          <div style="text-align:center;max-width:500px;">
-            <div style="font-size:28px;color:#00ff88;margin-bottom:8px;text-shadow:0 0 20px rgba(0,255,136,0.3);">project: neptune</div>
-            <div style="font-size:11px;color:#555;margin-bottom:24px;">v3.0.0 — Standalone SW Proxy Kernel · smoltcp WASM TCP/IP · Zero Dependencies</div>
-            <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">
-              <input id="landing-url" type="text" placeholder="https://example.com"
-                     style="background:#1a1a2e;border:1px solid #333;color:#00ff88;padding:8px 12px;border-radius:3px;font-family:inherit;font-size:13px;width:280px;outline:none;"
-                     onkeydown="if(event.key==='Enter')window.bootFromLanding()" />
-              <button onclick="window.bootFromLanding()" class="nptn-btn"
-                      style="background:#00ff88;color:#0a0a0f;border:none;padding:8px 16px;border-radius:3px;font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer;transition:all .15s;box-shadow:0 0 12px rgba(0,255,136,0.2);">Boot Proxy</button>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:420px;margin:0 auto 20px auto;text-align:left;">
-              <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:10px 12px;">
-                <div style="font-size:12px;color:#00ff88;margin-bottom:4px;font-weight:bold;">🔬 SW Proxy</div>
-                <div style="font-size:10px;color:#555;line-height:1.5;">ServiceWorker intercepts navigation, fetches cross-origin, rewrites HTML so all assets stay same-origin.</div>
+        <div id="landing" style="display:flex;flex-direction:column;height:100%;overflow:auto;padding:24px 32px;background:#0a0a0f;">
+          <!-- URL Bar -->
+          <div style="display:flex;gap:8px;justify-content:center;margin-bottom:28px;flex-shrink:0;">
+            <input id="landing-url" type="text" placeholder="https://example.com"
+                   style="background:#1a1a2e;border:1px solid #333;color:#00ff88;padding:10px 14px;border-radius:4px;font-family:inherit;font-size:13px;width:360px;outline:none;transition:border-color .2s;"
+                   onkeydown="if(event.key==='Enter')window.bootFromLanding()" />
+            <button onclick="window.bootFromLanding()" class="nptn-btn"
+                    style="background:#00ff88;color:#0a0a0f;border:none;padding:10px 20px;border-radius:4px;font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer;box-shadow:0 0 12px rgba(0,255,136,0.2);">Go</button>
+          </div>
+
+          <!-- Main content grid -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:900px;margin:0 auto;width:100%;">
+
+            <!-- How to Use -->
+            <div style="background:#111;border:1px solid #1a1a2e;border-radius:6px;padding:16px;">
+              <div style="font-size:14px;color:#00ff88;margin-bottom:12px;font-weight:bold;">How to Use</div>
+              <div style="font-size:11px;color:#888;line-height:1.7;">
+                <div style="margin-bottom:8px;display:flex;gap:8px;align-items:baseline;">
+                  <span style="color:#00ff88;font-weight:bold;min-width:16px;">1.</span>
+                  <span>Type a URL above and press <strong style="color:#ccc;">Enter</strong> or click <strong style="color:#ccc;">Go</strong>.</span>
+                </div>
+                <div style="margin-bottom:8px;display:flex;gap:8px;align-items:baseline;">
+                  <span style="color:#00ff88;font-weight:bold;min-width:16px;">2.</span>
+                  <span>The proxy fetches the site, rewrites all links to stay inside the proxy, and loads it in a tab.</span>
+                </div>
+                <div style="margin-bottom:8px;display:flex;gap:8px;align-items:baseline;">
+                  <span style="color:#00ff88;font-weight:bold;min-width:16px;">3.</span>
+                  <span>Use the toolbar for back/forward, bookmarks (Ctrl+D), reader mode, network inspector, and more.</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:baseline;">
+                  <span style="color:#00ff88;font-weight:bold;min-width:16px;">4.</span>
+                  <span>Drag &amp; drop an HTML file or paste raw HTML below for offline rewriting.</span>
+                </div>
               </div>
-              <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:10px 12px;">
-                <div style="font-size:12px;color:#00ff88;margin-bottom:4px;font-weight:bold;">🛡 Anti-Fingerprint</div>
-                <div style="font-size:10px;color:#555;line-height:1.5;">Canvas, WebGL, AudioContext, screen, navigator spoofing injected into every proxied page.</div>
-              </div>
-              <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:10px 12px;">
-                <div style="font-size:12px;color:#00ff88;margin-bottom:4px;font-weight:bold;">🌐 TCP/IP in WASM</div>
-                <div style="font-size:10px;color:#555;line-height:1.5;">smoltcp TCP/IP stack running inside the browser via WebAssembly. Zero relay servers.</div>
-              </div>
-              <div style="background:#111;border:1px solid #1a1a2e;border-radius:4px;padding:10px 12px;">
-                <div style="font-size:12px;color:#00ff88;margin-bottom:4px;font-weight:bold;">📄 Local Processing</div>
-                <div style="font-size:10px;color:#555;line-height:1.5;">Drag &amp; drop HTML files or paste raw HTML — WASM rewrites entirely in-browser, no network.</div>
-              </div>
-            </div>
-            <div style="font-size:10px;color:#444;margin-bottom:16px;">
-              <span style="color:#555;margin-right:8px;">Try:</span>
-              <a href="#" onclick="window.bootExample('https://example.com');return false;" style="color:#00aa66;text-decoration:none;margin-right:8px;">example.com</a>
-              <a href="#" onclick="window.bootExample('https://neverssl.com');return false;" style="color:#00aa66;text-decoration:none;margin-right:8px;">neverssl.com</a>
-              <a href="#" onclick="window.bootExample('https://httpbin.org');return false;" style="color:#00aa66;text-decoration:none;">httpbin.org</a>
-            </div>
-            <div id="drop-zone" style="margin-top:20px;padding:20px;border:2px dashed #222;border-radius:4px;color:#444;font-size:11px;max-width:400px;margin-left:auto;margin-right:auto;">
-              <div>Drop an HTML file here</div>
-              <div style="margin-top:4px;color:#333;font-size:9px;">No network needed — WASM parses &amp; rewrites in-browser</div>
-            </div>
-            <div id="paste-area" style="margin-top:12px;">
-              <textarea id="html-paste" placeholder="Or paste raw HTML here..."
-                        style="background:#1a1a2e;border:1px solid #222;color:#888;padding:6px;border-radius:3px;font-family:inherit;font-size:10px;width:350px;height:50px;resize:vertical;outline:none;"></textarea>
-              <div style="margin-top:4px;">
-                <button onclick="window.pasteHTML()"
-                        style="background:#1a1a2e;border:1px solid #333;color:#00aa66;padding:3px 10px;border-radius:3px;font-family:inherit;font-size:10px;cursor:pointer;">Rewrite HTML</button>
+              <div style="margin-top:12px;padding-top:12px;border-top:1px solid #1a1a2e;">
+                <div style="font-size:10px;color:#555;margin-bottom:6px;">Quick links:</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <a href="#" onclick="window.bootExample('https://example.com');return false;" style="color:#00aa66;text-decoration:none;font-size:10px;background:#1a1a2e;padding:3px 8px;border-radius:3px;border:1px solid #222;">example.com</a>
+                  <a href="#" onclick="window.bootExample('https://lite.duckduckgo.com');return false;" style="color:#00aa66;text-decoration:none;font-size:10px;background:#1a1a2e;padding:3px 8px;border-radius:3px;border:1px solid #222;">duckduckgo</a>
+                  <a href="#" onclick="window.bootExample('https://httpbin.org');return false;" style="color:#00aa66;text-decoration:none;font-size:10px;background:#1a1a2e;padding:3px 8px;border-radius:3px;border:1px solid #222;">httpbin.org</a>
+                  <a href="#" onclick="window.bootExample('https://info.cern.ch');return false;" style="color:#00aa66;text-decoration:none;font-size:10px;background:#1a1a2e;padding:3px 8px;border-radius:3px;border:1px solid #222;">info.cern.ch</a>
+                </div>
               </div>
             </div>
-            <div id="quick-links" style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+
+            <!-- How It Works -->
+            <div style="background:#111;border:1px solid #1a1a2e;border-radius:6px;padding:16px;">
+              <div style="font-size:14px;color:#00ff88;margin-bottom:12px;font-weight:bold;">How It Works</div>
+              <div style="font-size:11px;color:#888;line-height:1.7;">
+                <p style="margin-bottom:8px;">Neptune is a <strong style="color:#ccc;">self-contained SVG cartridge</strong> — zero external servers, zero browser extensions.</p>
+                <p style="margin-bottom:8px;">A <strong style="color:#ccc;">ServiceWorker</strong> intercepts navigation requests and fetches the real cross-origin target. Because SWs are trusted browser contexts, they bypass CORS for navigation responses.</p>
+                <p style="margin-bottom:8px;">All HTML, CSS, and JS URLs are <strong style="color:#ccc;">rewritten</strong> to route through the proxy path, keeping every resource same-origin.</p>
+                <p style="margin-bottom:8px;">For sites that block direct fetch, an <strong style="color:#ccc;">iframe visual proxy</strong> loads the target in a sandboxed frame.</p>
+                <p>A <strong style="color:#ccc;">WASM TCP/IP stack</strong> (smoltcp) runs entirely in-browser with a fetch()-based Ethernet bridge — no relay servers.</p>
+              </div>
+            </div>
+
+            <!-- Local Processing -->
+            <div style="background:#111;border:1px solid #1a1a2e;border-radius:6px;padding:16px;">
+              <div style="font-size:14px;color:#00ff88;margin-bottom:12px;font-weight:bold;">Local Processing</div>
+              <div id="drop-zone" style="padding:16px;border:2px dashed #222;border-radius:4px;color:#444;font-size:11px;text-align:center;margin-bottom:10px;transition:border-color .2s;">
+                <div>Drop an HTML file here</div>
+                <div style="margin-top:4px;color:#333;font-size:9px;">No network needed — WASM parses &amp; rewrites in-browser</div>
+              </div>
+              <div>
+                <textarea id="html-paste" placeholder="Or paste raw HTML here..."
+                          style="background:#1a1a2e;border:1px solid #222;color:#888;padding:6px;border-radius:3px;font-family:inherit;font-size:10px;width:100%;height:60px;resize:vertical;outline:none;"></textarea>
+                <div style="margin-top:6px;display:flex;gap:6px;">
+                  <button onclick="window.pasteHTML()" style="background:#1a1a2e;border:1px solid #333;color:#00aa66;padding:4px 12px;border-radius:3px;font-family:inherit;font-size:10px;cursor:pointer;">Rewrite HTML</button>
+                  <span style="color:#444;font-size:9px;align-self:center;">WASM rewrites URLs &amp; strips trackers offline</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Privacy &amp; Features -->
+            <div style="background:#111;border:1px solid #1a1a2e;border-radius:6px;padding:16px;">
+              <div style="font-size:14px;color:#00ff88;margin-bottom:12px;font-weight:bold;">Privacy &amp; Features</div>
+              <div style="font-size:11px;color:#888;line-height:1.7;">
+                <div style="margin-bottom:6px;"><span style="color:#00ff88;">●</span> <strong style="color:#ccc;">Anti-fingerprinting</strong> — Canvas, WebGL, AudioContext, and navigator spoofing injected into every proxied page.</div>
+                <div style="margin-bottom:6px;"><span style="color:#00ff88;">●</span> <strong style="color:#ccc;">Tracker blocking</strong> — Pattern-matches known analytics, ad, and tracking domains.</div>
+                <div style="margin-bottom:6px;"><span style="color:#00ff88;">●</span> <strong style="color:#ccc;">Cookie jar</strong> — Per-domain simulated cookies stored locally, never sent to external servers.</div>
+                <div style="margin-bottom:6px;"><span style="color:#00ff88;">●</span> <strong style="color:#ccc;">Traffic obfuscation</strong> — Randomized header profiles and timing jitter.</div>
+                <div><span style="color:#00ff88;">●</span> <strong style="color:#ccc;">All data stays local</strong> — Bookmarks, history, and settings are stored in your browser only.</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Bottom info -->
+          <div style="text-align:center;margin-top:24px;margin-bottom:16px;flex-shrink:0;">
+            <div style="font-size:10px;color:#333;">project: neptune v3.0.0 — Standalone SW Proxy Kernel · smoltcp WASM TCP/IP · Zero Dependencies</div>
+            <div id="quick-links" style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
               <!-- Populated from bookmarks -->
             </div>
           </div>
@@ -1403,7 +1447,9 @@
       function transformLocalHTML(html) {
         // Lightweight client-side URL rewriter for drag/drop/paste fallback.
         // Prefixes external URLs so navigation still routes through the proxy.
-        var base = 'https://example.com';
+        // Try to extract base from <base href> tag in the HTML; fall back to current origin.
+        var baseMatch = html.match(/<base[^>]+href=["']([^"']+)["']/i);
+        var base = baseMatch ? baseMatch[1] : window.location.origin;
         var origin = window.location.origin;
         var proxyPath = origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/proxy?url=';
         function toProxy(u) {

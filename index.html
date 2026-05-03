@@ -48,12 +48,6 @@
     a:hover{color:#00ff88;}
     .step{margin-bottom:0.9rem;color:#555;font-size:0.85rem;display:flex;align-items:baseline;gap:6px;}
     .step strong{color:#888;min-width:1.2rem;}
-    .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:1.5rem;}
-    .feat{background:#111;border:1px solid #1a1a2e;border-radius:6px;padding:12px;text-align:center;transition:all 0.2s;}
-    .feat:hover{border-color:#004d33;background:#13131f;}
-    .feat-icon{font-size:1.2rem;margin-bottom:6px;}
-    .feat-title{color:#00ff88;font-size:0.75rem;font-weight:bold;margin-bottom:4px;}
-    .feat-desc{color:#444;font-size:0.7rem;line-height:1.4;}
     .examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:1rem;}
     .examples a{background:#1a1a2e;border:1px solid #222;padding:4px 10px;border-radius:3px;font-size:0.75rem;color:#00aa66;transition:all 0.15s;}
     .examples a:hover{border-color:#004d33;color:#00ff88;background:#1a3a2e;}
@@ -71,7 +65,7 @@
     <div class="row">
       <input type="text" id="url" placeholder="https://example.com" value="https://example.com"
              onkeydown="if(event.key==='Enter')boot()">
-      <button onclick="boot()">Boot Proxy</button>
+      <button onclick="boot()">Go</button>
     </div>
 
     <div class="examples">
@@ -82,37 +76,41 @@
     </div>
 
     <div class="info">
-      <div class="step"><strong>1.</strong> Build the cartridge: <code>python3 build.py</code></div>
-      <div class="step"><strong>2.</strong> Serve locally: <code>python3 server.py</code></div>
-      <div class="step"><strong>3.</strong> Open <code>neptune.svg?url=TARGET</code> in any modern browser</div>
-      <p style="margin-top:1rem;color:#555;">
-        Neptune is a self-contained SVG "cartridge" that bootstraps a WASM unikernel,
-        registers a Service Worker kernel, and proxies any target site through a
-        local tunnel with full HTML rewriting, tracker blocking, and anti-fingerprinting.
-      </p>
-    </div>
+      <h3 style="color:#00ff88;font-size:1rem;margin-bottom:0.6rem;">How to Use</h3>
+      <div class="step"><strong>1.</strong> Type a URL above and press <strong>Enter</strong> or click <strong>Go</strong>.</div>
+      <div class="step"><strong>2.</strong> The proxy fetches the site, rewrites all links to stay inside the proxy, and loads it in a tab.</div>
+      <div class="step"><strong>3.</strong> Use the toolbar for back/forward, bookmarks (Ctrl+D), reader mode, network inspector, and more.</div>
+      <div class="step"><strong>4.</strong> Drag &amp; drop an HTML file or paste raw HTML for offline rewriting.</div>
 
-    <div class="features">
-      <div class="feat">
-        <div class="feat-icon">🔬</div>
-        <div class="feat-title">SW Proxy</div>
-        <div class="feat-desc">Cross-origin fetch &amp; rewrite via ServiceWorker</div>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🛡</div>
-        <div class="feat-title">Anti-Track</div>
-        <div class="feat-desc">Fingerprint randomization per session</div>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🌐</div>
-        <div class="feat-title">WASM TCP/IP</div>
-        <div class="feat-desc">smoltcp stack with fetch() bridge</div>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">📄</div>
-        <div class="feat-title">Local Rewrite</div>
-        <div class="feat-desc">Drag/drop or paste HTML — no network</div>
-      </div>
+      <h3 style="color:#00ff88;font-size:1rem;margin:1.2rem 0 0.6rem;">How It Works</h3>
+      <p style="margin-bottom:0.5rem;color:#555;">
+        Neptune is a <strong>self-contained SVG cartridge</strong> — zero external servers, zero browser extensions.
+      </p>
+      <p style="margin-bottom:0.5rem;color:#555;">
+        A <strong>ServiceWorker</strong> intercepts navigation requests and fetches the real cross-origin target.
+        Because SWs are trusted browser contexts, they bypass CORS for navigation responses.
+      </p>
+      <p style="margin-bottom:0.5rem;color:#555;">
+        All HTML, CSS, and JS URLs are <strong>rewritten</strong> to route through the proxy path,
+        keeping every resource same-origin.
+      </p>
+      <p style="margin-bottom:0.5rem;color:#555;">
+        For sites that block direct fetch, an <strong>iframe visual proxy</strong> loads the target in a sandboxed frame.
+      </p>
+      <p style="margin-bottom:0.5rem;color:#555;">
+        A <strong>WASM TCP/IP stack</strong> (smoltcp) runs entirely in-browser with a fetch()-based Ethernet bridge — no relay servers.
+      </p>
+
+      <h3 style="color:#00ff88;font-size:1rem;margin:1.2rem 0 0.6rem;">Privacy &amp; Features</h3>
+      <p style="margin-bottom:0.3rem;color:#555;"><span style="color:#00ff88;">●</span> <strong>Anti-fingerprinting</strong> — Canvas, WebGL, AudioContext, and navigator spoofing injected into every proxied page.</p>
+      <p style="margin-bottom:0.3rem;color:#555;"><span style="color:#00ff88;">●</span> <strong>Tracker blocking</strong> — Pattern-matches known analytics, ad, and tracking domains.</p>
+      <p style="margin-bottom:0.3rem;color:#555;"><span style="color:#00ff88;">●</span> <strong>Cookie jar</strong> — Per-domain simulated cookies stored locally, never sent to external servers.</p>
+      <p style="margin-bottom:0.3rem;color:#555;"><span style="color:#00ff88;">●</span> <strong>Traffic obfuscation</strong> — Randomized header profiles and timing jitter.</p>
+      <p style="margin-bottom:0.5rem;color:#555;"><span style="color:#00ff88;">●</span> <strong>All data stays local</strong> — Bookmarks, history, and settings are stored in your browser only.</p>
+
+      <p style="margin-top:1rem;color:#444;font-size:0.75rem;">
+        Build: <code>python3 build.py</code> &nbsp;|&nbsp; Serve: <code>python3 server.py</code> &nbsp;|&nbsp; Open: <code>neptune.svg?url=TARGET</code>
+      </p>
     </div>
   </div>
 
