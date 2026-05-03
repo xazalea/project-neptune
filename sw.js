@@ -16,6 +16,11 @@
 
 const SW_VERSION = '2.0.0';
 
+// Scope-relative proxy path computed from SW's own location.
+// Works on any CDN path (e.g., /gh/user/repo@main/proxy or /proxy).
+const PROXY_PATH = self.location.pathname.replace(/\/[^/]*$/, '') + '/proxy';
+const PROXY_ROOT = self.location.origin + PROXY_PATH + '?url=';
+
 // ── Core State ──────────────────────────────────────────
 let activeTarget   = null;
 let activeStrategy = null;
@@ -240,13 +245,13 @@ self.addEventListener('fetch', e => {
   //   url param on /proxy path → subresource proxying (always proxy)
   //   url param WITHOUT __nptn on neptune.svg → INITIAL SVG LOAD, do NOT intercept
   const isProxyNav = url.searchParams.has('__nptn');
-  const isProxySub = url.pathname === '/proxy' && url.searchParams.has('url');
+  const isProxySub = url.pathname === PROXY_PATH && url.searchParams.has('url');
   const isProxyRequest = isProxyNav || isProxySub;
 
   if (!isProxyRequest) {
     const skip = ['neptune.svg','template.svg','sw.js','server.py','build.py','index.html'];
     if (skip.some(s => url.pathname.endsWith(s))) return;
-    if (url.pathname === '/proxy') return;
+    if (url.pathname === PROXY_PATH) return;
   }
 
   // Allow proxy requests even without activeTarget — proxy params are self-contained
@@ -282,10 +287,10 @@ self.addEventListener('fetch', e => {
 });
 
 function shouldIntercept(url, req) {
-  // Proxy-mode: __nptn (iframe nav) or /proxy?url= (subresource) always pass.
+  // Proxy-mode: __nptn (iframe nav) or proxy?url= (subresource) always pass.
   // url param WITHOUT __nptn on neptune.svg is the INITIAL SVG LOAD — skip it.
   if (url.searchParams.has('__nptn')) return true;
-  if (url.pathname === '/proxy' && url.searchParams.has('url')) return true;
+  if (url.pathname === PROXY_PATH && url.searchParams.has('url')) return true;
 
   const localAssets = ['/neptune.svg','/template.svg','/sw.js','/server.py','/build.py','/index.html'];
   if (localAssets.some(a => url.pathname === a || url.pathname.endsWith(a))) return false;
@@ -770,7 +775,8 @@ function transformHTML(html, targetUrl, origin, cfg) {
   let t;
   try { t = new URL(targetUrl); } catch(e) { return html; }
 
-  const proxyRoot    = origin + '/proxy?url=';
+  // Use SW's own location to compute proxy path (works with any CDN path)
+  const proxyRoot = PROXY_ROOT;
   const targetOrigin = t.origin;
 
   const toProxy = (u) => {

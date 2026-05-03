@@ -1349,7 +1349,7 @@
             toast('Loaded ' + f.name + ' (' + formatBytes(html.length) + ')');
             if (kernel && kernel.transformHtmlAdvanced) {
               try {
-                var transformed = kernel.transformHtmlAdvanced(html, 'https://example.com', window.location.origin, window.location.origin + '/proxy');
+                var transformed = kernel.transformHtmlAdvanced(html, 'https://example.com', window.location.origin, window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/proxy');
                 toast('WASM rewrite: ' + formatBytes(transformed.length));
                 renderLocalHTML(transformed);
               } catch(ex) { toast('WASM transform failed: ' + ex.message, 'error'); renderLocalHTML(html); }
@@ -1378,7 +1378,7 @@
         toast('Pasted HTML: ' + formatBytes(html.length));
         if (kernel && kernel.transformHtmlAdvanced) {
           try {
-            var transformed = kernel.transformHtmlAdvanced(html, 'https://example.com', window.location.origin, window.location.origin + '/proxy');
+            var transformed = kernel.transformHtmlAdvanced(html, 'https://example.com', window.location.origin, window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/proxy');
             toast('WASM rewrite: ' + formatBytes(transformed.length));
             renderLocalHTML(transformed);
           } catch(ex) { toast('WASM failed: ' + ex.message, 'error'); renderLocalHTML(html); }
@@ -1451,11 +1451,10 @@
       async function bootSW() {
         if (!('serviceWorker' in navigator)) { toast('Service Workers not supported', 'error'); return false; }
         try {
-          if (!SW_CODE_B64 || SW_CODE_B64 === "{{SW_CODE}}") { toast('SW code not embedded', 'error'); return false; }
-          var swBlob = b64ToBlob(SW_CODE_B64, 'application/javascript');
-          var swURL = URL.createObjectURL(swBlob);
-          log(L.INF, 'SW blob: ' + swBlob.size + ' bytes');
-
+          // ServiceWorker registration from './sw.js' — the SW file must be deployed
+          // alongside neptune.svg on the same CDN (e.g., jsDelivr serves both from GitHub).
+          var swURL = './sw.js';
+          log(L.INF, 'Registering SW from: ' + swURL);
           var reg = await navigator.serviceWorker.register(swURL, { scope: './', updateViaCache: 'none' });
           log(L.INF, 'SW scope: ' + reg.scope);
 
