@@ -743,7 +743,7 @@
         consoleHistory.forEach(function(item) {
           var color = item.type === 'error' ? '#ff4444' : item.type === 'warn' ? '#ffaa00' : item.type === 'result' ? '#00ff88' : '#888';
           html += '<div style="color:' + color + ';border-bottom:1px solid #111;padding:2px 0;">';
-          if (item.input) html += '<span style="color:#555;">&gt; ' + escapeHtml(item.input) + '</span><br>';
+          if (item.input) html += '<span style="color:#555;">&gt; ' + escapeHtml(item.input) + '</span><br/>';
           html += escapeHtml(String(item.output || '')) + '</div>';
         });
         html += '</div>';
@@ -852,8 +852,8 @@
         html += '</div>';
 
         html += '<div style="margin-top:12px;padding:8px;background:#111;border:1px solid #1a1a2e;border-radius:3px;font-size:10px;color:#555;line-height:1.6;">';
-        html += 'Your browsing data is stored locally in your browser. No external servers receive your history, bookmarks, or cookies.<br>';
-        html += 'Tracker blocking uses pattern matching. Some trackers may slip through.<br>';
+        html += 'Your browsing data is stored locally in your browser. No external servers receive your history, bookmarks, or cookies.<br/>';
+        html += 'Tracker blocking uses pattern matching. Some trackers may slip through.<br/>';
         html += 'Cookies are simulated per-domain and not shared with the actual target server.';
         html += '</div>';
         panelContent.innerHTML = html;
