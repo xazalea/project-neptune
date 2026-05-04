@@ -5,7 +5,6 @@ No external APIs. Serves static files, proxies requests, and handles WebRTC sign
 """
 
 import http.server
-import socketserver
 import urllib.request
 import urllib.parse
 import ssl
@@ -163,22 +162,24 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
 
 def run():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    with socketserver.TCPServer(("", PORT), NeptuneHandler) as httpd:
-        print(f"=" * 60)
-        print(f"  project: neptune — Local Dev Server")
-        print(f"  http://localhost:{PORT}/")
-        print(f"  Proxy:   http://localhost:{PORT}{PROXY_PATH}?url=...")
-        print(f"  Signal:  http://localhost:{PORT}{SIGNAL_PATH}")
-        print(f"=" * 60)
-        print()
-        print(f"  Quick start:")
-        print(f"    1. Build:    python3 build.py")
-        print(f"    2. Open:     http://localhost:{PORT}/neptune.svg?url=https://example.com")
-        print(f"=" * 60)
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n\nShutting down.")
+    print(f"=" * 60, flush=True)
+    print(f"  project: neptune — Local Dev Server", flush=True)
+    print(f"  http://localhost:{PORT}/", flush=True)
+    print(f"  Proxy:   http://localhost:{PORT}{PROXY_PATH}?url=...", flush=True)
+    print(f"  Signal:  http://localhost:{PORT}{SIGNAL_PATH}", flush=True)
+    print(f"=" * 60, flush=True)
+    print(flush=True)
+    print(f"  Quick start:", flush=True)
+    print(f"    1. Build:    python3 build.py", flush=True)
+    print(f"    2. Open:     http://localhost:{PORT}/neptune.svg?url=https://example.com", flush=True)
+    print(f"=" * 60, flush=True)
+    httpd = http.server.ThreadingHTTPServer(("", PORT), NeptuneHandler)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\n\nShutting down.")
+    finally:
+        httpd.server_close()
 
 
 if __name__ == "__main__":

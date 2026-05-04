@@ -228,6 +228,22 @@ self.addEventListener('message', e => {
     case 'NET_ADAPT_CLOSE':
       handleNetAdaptClose(d, src);
       break;
+
+    // ── WebSocket Relay ──────────────────────────────
+    case 'WS_CONNECT':
+      handleWsConnect(d, src).catch(e => {
+        console.error('[SW] WS_CONNECT error:', e.message);
+        if (src) src.postMessage({ type: 'WS_ERROR', wsId: 0, error: e.message });
+      });
+      break;
+
+    case 'WS_SEND':
+      handleWsSend(d, src);
+      break;
+
+    case 'WS_CLOSE':
+      handleWsClose(d, src);
+      break;
   }
 });
 
@@ -944,6 +960,44 @@ function _injectPageScripts(html, targetUrl, origin, cfg, targetOrigin, proxyRoo
     'function patchHistory(orig){return function(){var args=Array.from(arguments);if(args.length>=3&&typeof args[2]==="string"){args[2]=p(args[2]);}return orig.apply(this,args);};}' +
     'history.pushState=patchHistory(op);history.replaceState=patchHistory(or2);' +
     'window.addEventListener("popstate",function(){if(window.__nptn_navigate)window.__nptn_navigate(location.href);});' +
+    // WebSocket proxy relay through SW (monkeypatch)
+    'var _nws=window.WebSocket;window.WebSocket=function(u,ps){' +
+    'if(!u||!(u.startsWith("wss://")||u.startsWith("ws://")))return new _nws(u,ps);' +
+    'var s=this;s.url=u;s.readyState=0;s.CONNECTING=0;s.OPEN=1;s.CLOSING=2;s.CLOSED=3;' +
+    's.binaryType="blob";s.bufferedAmount=0;s.extensions="";s.protocol="";' +
+    's._wsId=null;s._q=[];' +
+    'var sw=navigator.serviceWorker.controller;' +
+    'if(!sw){setTimeout(function(){s.readyState=3;if(s.onclose)s.onclose({code:1006});},0);return;}' +
+    'sw.postMessage({type:"WS_CONNECT",url:u,protocols:ps});' +
+    'var h=function(e){var d=e.data;if(!d||!d.type)return;' +
+    'if(d.type==="WS_CONNECTING"){s._wsId=d.wsId;}' +
+    'else if(d.type==="WS_OPENED"&&d.wsId===s._wsId){s.readyState=1;if(s.onopen)s.onopen({target:s});' +
+    'var mq=s._q;s._q=[];for(var i=0;i<mq.length;i++)sw.postMessage({type:"WS_SEND",wsId:s._wsId,data:mq[i]});}' +
+    'else if(d.type==="WS_MESSAGE"&&d.wsId===s._wsId){s.readyState=1;' +
+    'var ev={target:s,data:d.data,origin:u,lastEventId:""};' +
+    'if(typeof d.data==="string")ev.data=d.data;else if(Array.isArray(d.data)){' +
+    'var bytes=new Uint8Array(d.data);' +
+    'if(s.binaryType==="arraybuffer")ev.data=bytes.buffer;else ev.data=new Blob([bytes]);}' +
+    'if(s.onmessage)s.onmessage(ev);}' +
+    'else if(d.type==="WS_CLOSED"&&d.wsId===s._wsId){s.readyState=3;' +
+    'navigator.serviceWorker.removeEventListener("message",h);' +
+    'if(s.onclose)s.onclose({target:s,code:d.code,reason:d.reason,wasClean:d.wasClean});}' +
+    'else if(d.type==="WS_ERROR"&&d.wsId===s._wsId){if(s.onerror)s.onerror({target:s});}' +
+    '};' +
+    'navigator.serviceWorker.addEventListener("message",h);' +
+    's.send=function(data){' +
+    'if(s.readyState===1&&s._wsId!=null){' +
+    'if(data instanceof ArrayBuffer)data=Array.from(new Uint8Array(data));' +
+    'else if(data instanceof Uint8Array)data=Array.from(data);' +
+    'sw.postMessage({type:"WS_SEND",wsId:s._wsId,data:data});' +
+    '}else if(s.readyState<=1){s._q.push(data);}};' +
+    's.close=function(c,r){if(s.readyState===3)return;s.readyState=2;' +
+    'if(s._wsId!=null)sw.postMessage({type:"WS_CLOSE",wsId:s._wsId,code:c,reason:r});s.readyState=3;};' +
+    's.addEventListener=function(t,fn){if(t==="open")s.onopen=fn;else if(t==="message")s.onmessage=fn;' +
+    'else if(t==="close")s.onclose=fn;else if(t==="error")s.onerror=fn;};' +
+    '};' +
+    'window.WebSocket.prototype=_nws.prototype;' +
+    'window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;' +
     '})();</script>';
 
   // Inject scripts
@@ -1114,6 +1168,48 @@ function transformHTML(html, targetUrl, origin, cfg) {
   history.pushState=patchHistory(op);
   history.replaceState=patchHistory(or);
   window.addEventListener('popstate',function(){if(window.__nptn_navigate)window.__nptn_navigate(location.href);});
+  // WebSocket proxy relay through SW (monkeypatch)
+  var _nws=window.WebSocket;
+  window.WebSocket=function(u,ps){
+    if(!u||!(u.startsWith('wss://')||u.startsWith('ws://')))return new _nws(u,ps);
+    var s=this;s.url=u;s.readyState=0;s.CONNECTING=0;s.OPEN=1;s.CLOSING=2;s.CLOSED=3;
+    s.binaryType='blob';s.bufferedAmount=0;s.extensions='';s.protocol='';
+    s._wsId=null;s._q=[];
+    var sw=navigator.serviceWorker.controller;
+    if(!sw){setTimeout(function(){s.readyState=3;if(s.onclose)s.onclose({code:1006});},0);return;}
+    sw.postMessage({type:'WS_CONNECT',url:u,protocols:ps});
+    var h=function(e){var d=e.data;if(!d||!d.type)return;
+      if(d.type==='WS_CONNECTING'){s._wsId=d.wsId;}
+      else if(d.type==='WS_OPENED'&&d.wsId===s._wsId){s.readyState=1;if(s.onopen)s.onopen({target:s});
+        var mq=s._q;s._q=[];for(var i=0;i<mq.length;i++)sw.postMessage({type:'WS_SEND',wsId:s._wsId,data:mq[i]});}
+      else if(d.type==='WS_MESSAGE'&&d.wsId===s._wsId){s.readyState=1;
+        var ev={target:s,data:d.data,origin:u,lastEventId:''};
+        if(typeof d.data==='string')ev.data=d.data;
+        else if(Array.isArray(d.data)){
+          var bytes=new Uint8Array(d.data);
+          if(s.binaryType==='arraybuffer')ev.data=bytes.buffer;else ev.data=new Blob([bytes]);
+        }
+        if(s.onmessage)s.onmessage(ev);}
+      else if(d.type==='WS_CLOSED'&&d.wsId===s._wsId){s.readyState=3;
+        navigator.serviceWorker.removeEventListener('message',h);
+        if(s.onclose)s.onclose({target:s,code:d.code,reason:d.reason,wasClean:d.wasClean});}
+      else if(d.type==='WS_ERROR'&&d.wsId===s._wsId){if(s.onerror)s.onerror({target:s});}
+    };
+    navigator.serviceWorker.addEventListener('message',h);
+    s.send=function(data){
+      if(s.readyState===1&&s._wsId!=null){
+        if(data instanceof ArrayBuffer)data=Array.from(new Uint8Array(data));
+        else if(data instanceof Uint8Array)data=Array.from(data);
+        sw.postMessage({type:'WS_SEND',wsId:s._wsId,data:data});
+      }else if(s.readyState<=1){s._q.push(data);}
+    };
+    s.close=function(c,r){if(s.readyState===3)return;s.readyState=2;
+      if(s._wsId!=null)sw.postMessage({type:'WS_CLOSE',wsId:s._wsId,code:c,reason:r});s.readyState=3;};
+    s.addEventListener=function(t,fn){if(t==='open')s.onopen=fn;else if(t==='message')s.onmessage=fn;
+      else if(t==='close')s.onclose=fn;else if(t==='error')s.onerror=fn;};
+  };
+  window.WebSocket.prototype=_nws.prototype;
+  window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
 })();
 </script>`;
 
@@ -1259,6 +1355,98 @@ function formatBytes(b) {
 
 function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ════════════════════════════════════════════════════════
+// WebSocket Relay — SW opens real WS, relays to page via postMessage
+// ════════════════════════════════════════════════════════
+
+// Per-socket state: wsId → { ws, url, client, connecting, queue }
+const wsRelays = new Map();
+let nextWsId = 0;
+
+function handleWsConnect(d, src) {
+  const { url, protocols } = d;
+  if (!url) return;
+
+  const wsId = ++nextWsId;
+  const state = { url, client: src, connecting: true, queue: [], ws: null };
+  wsRelays.set(wsId, state);
+
+  try {
+    // Open real WebSocket from SW context — no CORS restrictions
+    const ws = new WebSocket(url, protocols);
+    state.ws = ws;
+
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => {
+      state.connecting = false;
+      if (src) src.postMessage({ type: 'WS_OPENED', wsId });
+      // Flush queued messages
+      const q = state.queue;
+      state.queue = [];
+      for (const data of q) {
+        try { ws.send(data); } catch (e) {}
+      }
+    };
+
+    ws.onmessage = (e) => {
+      if (src) {
+        const payload = e.data instanceof ArrayBuffer
+          ? Array.from(new Uint8Array(e.data))
+          : e.data;
+        src.postMessage({ type: 'WS_MESSAGE', wsId, data: payload });
+      }
+    };
+
+    ws.onclose = (e) => {
+      if (src) src.postMessage({
+        type: 'WS_CLOSED',
+        wsId,
+        code: e.code,
+        reason: e.reason,
+        wasClean: e.wasClean,
+      });
+      wsRelays.delete(wsId);
+    };
+
+    ws.onerror = (e) => {
+      if (src) src.postMessage({ type: 'WS_ERROR', wsId, error: 'WebSocket error' });
+    };
+  } catch (err) {
+    if (src) src.postMessage({ type: 'WS_ERROR', wsId, error: err.message });
+    wsRelays.delete(wsId);
+  }
+
+  // Return wsId immediately so client knows the handle
+  if (src) src.postMessage({ type: 'WS_CONNECTING', wsId });
+}
+
+function handleWsSend(d, src) {
+  const { wsId, data } = d;
+  if (wsId == null) return;
+  const state = wsRelays.get(wsId);
+  if (!state) return;
+
+  const payload = Array.isArray(data) ? new Uint8Array(data) : data;
+
+  if (state.connecting) {
+    state.queue.push(payload);
+  } else if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    try { state.ws.send(payload); } catch (e) {}
+  }
+}
+
+function handleWsClose(d, src) {
+  const { wsId, code, reason } = d;
+  if (wsId == null) return;
+  const state = wsRelays.get(wsId);
+  if (!state) return;
+  if (state.ws && (state.ws.readyState === WebSocket.OPEN || state.ws.readyState === WebSocket.CONNECTING)) {
+    try { state.ws.close(code || 1000, reason || ''); } catch (e) {}
+  }
+  wsRelays.delete(wsId);
 }
 
 // ════════════════════════════════════════════════════════
@@ -1411,16 +1599,16 @@ function buildObfuscatedRequest(method, host, headers, body) {
       var reqHeaders = new Headers();
       for (var hk in headers) { reqHeaders.set(hk, headers[hk]); }
       mod.applyHeaders(reqHeaders, { stripReferer: false });
-      var init = {
+      var modInit = {
         method: method,
         redirect: 'follow',
         cache: 'no-store',
         mode: 'cors',
         headers: reqHeaders,
       };
-      if (body && body.length > 0) init.body = new Uint8Array(body);
-      if (swConfig.userAgent) init.headers.set('user-agent', swConfig.userAgent);
-      return init;
+      if (body && body.length > 0) modInit.body = new Uint8Array(body);
+      if (swConfig.userAgent) modInit.headers.set('user-agent', swConfig.userAgent);
+      return modInit;
     } catch(e) {}
   }
   // Fallback inline implementation

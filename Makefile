@@ -15,7 +15,7 @@ wasm-build:
 # Build with release optimizations
 wasm-release:
 	@echo "Building Neptune WASM kernel (release)..."
-	wasm-pack build --target web --out-dir pkg --no-typescript --release
+	wasm-pack build --target web --out-dir pkg --no-typescript --release --no-opt
 	@echo "Release build complete."
 
 # Optimize WASM binary (requires wasm-opt from binaryen)
@@ -37,15 +37,7 @@ serve:
 serve-https:
 	@echo "Starting HTTPS server on https://localhost:8443"
 	@echo "Required for Service Worker registration!"
-	python3 -c "
-import http.server, ssl, socketserver
-ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-ctx.load_cert_chain('server.pem', 'server-key.pem')
-server = socketserver.TCPServer(('0.0.0.0', 8443), http.server.SimpleHTTPRequestHandler)
-server.socket = ctx.wrap_socket(server.socket, server_side=True)
-print('HTTPS server running on https://localhost:8443')
-server.serve_forever()
-" 2>/dev/null || echo "Run 'make certs' first"
+	@python3 server_https.py 2>/dev/null || echo "Run 'make certs' first"
 
 # Generate self-signed certificates for HTTPS testing
 certs:

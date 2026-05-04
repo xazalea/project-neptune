@@ -640,7 +640,7 @@ WEEK 7-8:  Phase 6 (Distribution) + Documentation
 | # | Approach | Novelty | Feasibility | Impact | Status |
 |---|----------|---------|-------------|--------|--------|
 | A | smoltcp WASM TCP/IP Stack | 🔥🔥🔥🔥🔥 | ✅ HIGH | Transformative | ✅ 70% |
-| B | Public TURN as Free Relay | 🔥🔥🔥🔥🔥 | ✅ MEDIUM | Game-changing | ⬜ 0% |
+| B | Public TURN as Free Relay | 🔥🔥🔥🔥🔥 | ✅ MEDIUM | Game-changing | ✅ 95% |
 | C | CSS Houdini Pixel Reader | 🔥🔥🔥🔥🔥 | ⚠️ SPECULATIVE | Breakthrough | ⬜ 0% |
 | D | SVG GPU Filter Pipeline | 🔥🔥🔥🔥🔥 | ⚠️ SPECULATIVE | Academic | ⬜ 0% |
 | E | WebRTC P2P Mesh | 🔥🔥🔥 | ✅ MEDIUM | Useful | ⬜ 10% |

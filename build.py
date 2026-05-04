@@ -90,6 +90,11 @@ def main():
     transport_webrtc_b64 = b64_file_optional(os.path.join(transports_dir, "webrtc.js"), "WebRTC DataChannel")
     transport_smoltcp_b64 = b64_file_optional(os.path.join(transports_dir, "smoltcp.js"), "smoltcp WASM")
     transport_houdini_b64 = b64_file_optional(os.path.join(transports_dir, "houdini.js"), "CSS Houdini")
+    transport_tor_b64 = b64_file_optional(os.path.join(transports_dir, "tor.js"), "Tor WASM")
+    transport_locks_b64 = b64_file_optional(os.path.join(transports_dir, "locks.js"), "Web Locks")
+    transport_svg_gpu_b64 = b64_file_optional(os.path.join(transports_dir, "svg_gpu.js"), "SVG GPU pipeline")
+    transport_webcodecs_b64 = b64_file_optional(os.path.join(transports_dir, "webcodecs.js"), "WebCodecs")
+    storage_fs_b64 = b64_file_optional(os.path.join(PROJ, "src", "storage", "fs.js"), "File System Access")
 
     # Engine modules
     print("\n  -- Engine Modules --")
@@ -101,6 +106,7 @@ def main():
     engine_cache_b64 = b64_file_optional(os.path.join(engine_dir, "cache.js"), "Cache API")
     engine_obfuscator_b64 = b64_file_optional(os.path.join(engine_dir, "obfuscator.js"), "Obfuscator")
     engine_logger_b64 = b64_file_optional(os.path.join(engine_dir, "logger.js"), "Logger")
+    engine_streaming_rewriter_b64 = b64_file_optional(os.path.join(engine_dir, "streaming-rewriter.js"), "Streaming rewriter")
 
     # 3. Read template and inject
     print("\n[3/6] Embedding into SVG template...")
@@ -122,6 +128,12 @@ def main():
         '"{{TRANSPORT_WEBRTC}}"': f'"{transport_webrtc_b64}"',
         '"{{TRANSPORT_SMOLTCP_JS}}"': f'"{transport_smoltcp_b64}"',
         '"{{TRANSPORT_HOUDINI}}"': f'"{transport_houdini_b64}"',
+        '"{{TRANSPORT_TOR}}"': f'"{transport_tor_b64}"',
+        '"{{TRANSPORT_LOCKS}}"': f'"{transport_locks_b64}"',
+        '"{{TRANSPORT_SVG_GPU}}"': f'"{transport_svg_gpu_b64}"',
+        '"{{TRANSPORT_WEBCODECS}}"': f'"{transport_webcodecs_b64}"',
+        '"{{STORAGE_FS}}"': f'"{storage_fs_b64}"',
+        '"{{ENGINE_STREAMING_REWRITER}}"': f'"{engine_streaming_rewriter_b64}"',
         '"{{ENGINE_REWRITER}}"': f'"{engine_rewriter_b64}"',
         '"{{ENGINE_SECURITY}}"': f'"{engine_security_b64}"',
         '"{{ENGINE_TRACKER}}"': f'"{engine_tracker_b64}"',
@@ -140,8 +152,11 @@ def main():
         "{{BOOTLOADER}}",
         "{{TRANSPORT_BASE}}", "{{TRANSPORT_DETECTOR}}", "{{TRANSPORT_TURN}}",
         "{{TRANSPORT_WEBRTC}}", "{{TRANSPORT_SMOLTCP_JS}}", "{{TRANSPORT_HOUDINI}}",
+        "{{TRANSPORT_TOR}}", "{{TRANSPORT_LOCKS}}", "{{TRANSPORT_SVG_GPU}}", "{{TRANSPORT_WEBCODECS}}",
+        "{{STORAGE_FS}}", "{{ENGINE_STREAMING_REWRITER}}",
         "{{ENGINE_REWRITER}}", "{{ENGINE_SECURITY}}", "{{ENGINE_TRACKER}}",
         "{{ENGINE_COOKIES}}", "{{ENGINE_CACHE}}", "{{ENGINE_OBFUSCATOR}}", "{{ENGINE_LOGGER}}",
+        "{{ENGINE_STREAMING_REWRITER}}",
     ]
 
     unreplaced = [p for p in all_placeholders if p in svg]
@@ -192,6 +207,12 @@ def main():
         ("WebRTC", transport_webrtc_b64),
         ("smoltcp JS", transport_smoltcp_b64),
         ("Houdini", transport_houdini_b64),
+        ("Tor WASM", transport_tor_b64),
+        ("Web Locks", transport_locks_b64),
+        ("SVG GPU", transport_svg_gpu_b64),
+        ("WebCodecs", transport_webcodecs_b64),
+        ("File System", storage_fs_b64),
+        ("Streaming Rewriter", engine_streaming_rewriter_b64),
         ("Rewriter", engine_rewriter_b64),
         ("Security", engine_security_b64),
         ("Tracker", engine_tracker_b64),
@@ -199,6 +220,7 @@ def main():
         ("Cache", engine_cache_b64),
         ("Obfuscator", engine_obfuscator_b64),
         ("Logger", engine_logger_b64),
+        ("Streaming Rewriter", engine_streaming_rewriter_b64),
     ]:
         l = len(b64str) if b64str else 0
         total_chars += l
