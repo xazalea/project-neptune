@@ -269,7 +269,21 @@
       var WASM_JS_B64         = "{{WASM_JS}}";
       var WASM_BIN_B64        = "{{WASM_BIN}}";
       var NETWORK_ADAPTER_B64 = "{{NETWORK_ADAPTER}}";
-      var FINGERPRINT_JS_B64   = "{{FINGERPRINT_JS}}";
+      var FINGERPRINT_JS_B64  = "{{FINGERPRINT_JS}}";
+      var BOOTLOADER_B64      = "{{BOOTLOADER}}";
+      var TRANSPORT_BASE_B64        = "{{TRANSPORT_BASE}}";
+      var TRANSPORT_DETECTOR_B64    = "{{TRANSPORT_DETECTOR}}";
+      var TRANSPORT_TURN_B64        = "{{TRANSPORT_TURN}}";
+      var TRANSPORT_WEBRTC_B64      = "{{TRANSPORT_WEBRTC}}";
+      var TRANSPORT_SMOLTCP_JS_B64  = "{{TRANSPORT_SMOLTCP_JS}}";
+      var TRANSPORT_HOUDINI_B64     = "{{TRANSPORT_HOUDINI}}";
+      var ENGINE_REWRITER_B64       = "{{ENGINE_REWRITER}}";
+      var ENGINE_SECURITY_B64       = "{{ENGINE_SECURITY}}";
+      var ENGINE_TRACKER_B64        = "{{ENGINE_TRACKER}}";
+      var ENGINE_COOKIES_B64        = "{{ENGINE_COOKIES}}";
+      var ENGINE_CACHE_B64          = "{{ENGINE_CACHE}}";
+      var ENGINE_OBFUSCATOR_B64     = "{{ENGINE_OBFUSCATOR}}";
+      var ENGINE_LOGGER_B64         = "{{ENGINE_LOGGER}}";
 
       // ====== CONSTANTS ======
       var APP_VERSION = '3.0.0';
@@ -1850,42 +1864,124 @@
         if (target) log(L.INF, 'Target: ' + target);
         if (snapshot) log(L.INF, 'Snapshot: ' + atob(snapshot).length + ' bytes');
 
-        setBootStatus('Loading WASM kernel...');
-        var wasmOk = await loadWASM();
-        if (!wasmOk) { setBootStatus('WASM unavailable — proxy still functional', true); }
-
-        setBootStatus('Registering Service Worker...');
-        var ok = await bootSW();
-        if (!ok) {
-          setBootStatus('Service Worker failed — proxy requires SW', true);
-          toast('Service Worker failed. Proxy cannot function.', 'error');
-          return;
-        }
-
-        // Initialize network adapter after SW is ready
-        setBootStatus('Initializing network stack...');
-        loadNetworkAdapter(); loadFingerprintEngine();
-        if (netAdapter) {
-          netAdapter.start();
-          log(L.INF, 'NetworkAdapter started — smoltcp fetch()-based networking active');
-          toast('Network stack online', 'info');
-        }
-
-        setBootStatus('Ready', true);
-
-        if (ok && target) {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ type: 'SET_TARGET', url: target, snapshot: snapshot || null });
+        // ── Try NeptuneBoot v3 modular bootloader ──
+        var useBootloader = false;
+        try {
+          if (BOOTLOADER_B64 && BOOTLOADER_B64.length > 0 && BOOTLOADER_B64.indexOf('{{') === -1) {
+            eval(atob(BOOTLOADER_B64));
+            if (window.NeptuneBoot) {
+              var artifacts = {
+                swCode: (SW_CODE_B64 && SW_CODE_B64.indexOf('{{') === -1) ? SW_CODE_B64 : null,
+                wasmJs: (WASM_JS_B64 && WASM_JS_B64.indexOf('{{') === -1) ? WASM_JS_B64 : null,
+                wasmBin: (WASM_BIN_B64 && WASM_BIN_B64.indexOf('{{') === -1) ? WASM_BIN_B64 : null,
+                networkAdapter: (NETWORK_ADAPTER_B64 && NETWORK_ADAPTER_B64.indexOf('{{') === -1) ? NETWORK_ADAPTER_B64 : null,
+                fingerprintJs: (FINGERPRINT_JS_B64 && FINGERPRINT_JS_B64.indexOf('{{') === -1) ? FINGERPRINT_JS_B64 : null,
+                transportDetector: (TRANSPORT_DETECTOR_B64 && TRANSPORT_DETECTOR_B64.indexOf('{{') === -1) ? TRANSPORT_DETECTOR_B64 : null,
+                transportModules: {},
+                engineModules: {},
+                uiModules: {},
+              };
+              function _addModule(obj, key, b64) { if (b64 && b64.length > 0 && b64.indexOf('{{') === -1) obj[key] = b64; }
+              var tm = artifacts.transportModules;
+              _addModule(tm, 'transport.js', TRANSPORT_BASE_B64);
+              _addModule(tm, 'turn.js', TRANSPORT_TURN_B64);
+              _addModule(tm, 'webrtc.js', TRANSPORT_WEBRTC_B64);
+              _addModule(tm, 'smoltcp.js', TRANSPORT_SMOLTCP_JS_B64);
+              _addModule(tm, 'houdini.js', TRANSPORT_HOUDINI_B64);
+              var em = artifacts.engineModules;
+              _addModule(em, 'rewriter.js', ENGINE_REWRITER_B64);
+              _addModule(em, 'security.js', ENGINE_SECURITY_B64);
+              _addModule(em, 'tracker.js', ENGINE_TRACKER_B64);
+              _addModule(em, 'cookies.js', ENGINE_COOKIES_B64);
+              _addModule(em, 'cache.js', ENGINE_CACHE_B64);
+              _addModule(em, 'obfuscator.js', ENGINE_OBFUSCATOR_B64);
+              _addModule(em, 'logger.js', ENGINE_LOGGER_B64);
+              useBootloader = true;
+              log(L.INF, 'NeptuneBoot v3 ready — ' + Object.keys(tm).length + ' transports, ' + Object.keys(em).length + ' engines');
+            }
           }
-          createTab(target);
-        }
+        } catch(e) { log(L.WRN, 'Bootloader init: ' + e.message); }
 
-        // Poll stats from SW
-        setInterval(function() {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ type: 'GET_STATS' });
+        if (useBootloader) {
+          var _dom = {
+            bootOverlay: document.getElementById('boot-overlay'),
+            bootStatus: document.getElementById('boot-status'),
+          };
+          var _cfg = Object.assign({}, storage.settings);
+          if (fingerprintEngine) _cfg.fingerprintCode = fingerprintEngine;
+
+          NeptuneBoot.boot({
+            artifacts: artifacts,
+            dom: _dom,
+            config: _cfg,
+            onReady: function(bootResult, transports, params, config) {
+              if (window.__nptn_kernel) kernel = window.__nptn_kernel;
+              if (window.__nptn_netStack) netStack = window.__nptn_netStack;
+              if (window.__nptn_networkAdapter) netAdapter = window.__nptn_networkAdapter;
+              if (window.__nptn_fingerprintCode) fingerprintEngine = window.__nptn_fingerprintCode;
+              if (navigator.serviceWorker.controller) { swReady = true; navigator.serviceWorker.addEventListener('message', handleSWMessage); }
+
+              syncConfigToSW();
+
+              if (transports && transports.best) {
+                document.getElementById('status-strategy').textContent = 'Transport: ' + transports.best.name;
+              }
+
+              if (bootResult.success && target) {
+                if (navigator.serviceWorker.controller) {
+                  navigator.serviceWorker.controller.postMessage({ type: 'SET_TARGET', url: target, snapshot: snapshot || null });
+                }
+                createTab(target);
+              }
+
+              setInterval(function() {
+                if (navigator.serviceWorker.controller) {
+                  navigator.serviceWorker.controller.postMessage({ type: 'GET_STATS' });
+                }
+              }, 2000);
+
+              if (netAdapter) { try { netAdapter.start(); } catch(e) {} }
+              toast('Neptune v3 ready — ' + (bootResult.totalMs || '?') + 'ms');
+            }
+          });
+
+        } else {
+          // Legacy v2 boot (fallback)
+          setBootStatus('Loading WASM kernel...');
+          var wasmOk = await loadWASM();
+          if (!wasmOk) { setBootStatus('WASM unavailable — proxy still functional', true); }
+
+          setBootStatus('Registering Service Worker...');
+          var ok = await bootSW();
+          if (!ok) {
+            setBootStatus('Service Worker failed — proxy requires SW', true);
+            toast('Service Worker failed. Proxy cannot function.', 'error');
+            return;
           }
-        }, 2000);
+
+          setBootStatus('Initializing network stack...');
+          loadNetworkAdapter(); loadFingerprintEngine();
+          if (netAdapter) {
+            netAdapter.start();
+            log(L.INF, 'NetworkAdapter started — smoltcp fetch()-based networking active');
+            toast('Network stack online', 'info');
+          }
+
+          setBootStatus('Ready', true);
+
+          if (ok && target) {
+            if (navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'SET_TARGET', url: target, snapshot: snapshot || null });
+            }
+            createTab(target);
+          }
+
+          setInterval(function() {
+            if (navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'GET_STATS' });
+            }
+          }, 2000);
+        }
       }
 
       boot();

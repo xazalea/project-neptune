@@ -58,6 +58,13 @@ let startTime     = Date.now();
 // ── Cache ───────────────────────────────────────────────
 const CACHE_NAME = 'neptune-v2';
 
+// ── Engine Module Delegation ──────────────────────────
+// When engine modules are injected via SET_MODULES, use them.
+// Falls back to inline implementations when modules are absent.
+function _useModule(name) {
+  try { return self[name] || null; } catch(e) { return null; }
+}
+
 // ── Known tracker patterns ─────────────────────────────
 const TRACKER_PATTERNS = [
   'google-analytics','googletagmanager','doubleclick','googleadservices',
@@ -183,6 +190,21 @@ self.addEventListener('message', e => {
     case 'PURGE_COOKIES':
       cookieJar.clear();
       broadcast({ type: 'COOKIES_PURGED' });
+      break;
+
+    // ── Engine Module Injection ───────────────────────
+    case 'SET_MODULES':
+      if (d.modules) {
+        for (var mName in d.modules) {
+          try {
+            eval(d.modules[mName]);
+            console.log('[SW] Loaded module: ' + mName);
+          } catch (er) {
+            console.error('[SW] Module ' + mName + ' failed: ' + er.message);
+          }
+        }
+        if (src) src.postMessage({ type: 'MODULES_LOADED', count: Object.keys(d.modules).length });
+      }
       break;
 
     // ── Network Adapter Bridge ──────────────────────────
@@ -323,6 +345,13 @@ function checkUrlFilter(url) {
 }
 
 function isTrackerUrl(url) {
+  // Delegate to NeptuneTracker if injected
+  var mod = _useModule('NeptuneTracker');
+  if (mod) {
+    var result = mod.isTracker(url);
+    return result.blocked;
+  }
+  // Fallback inline implementation
   const lower = url.toLowerCase();
   for (const p of TRACKER_PATTERNS) {
     if (lower.includes(p)) return true;
@@ -362,36 +391,63 @@ async function handleProxy(req, url) {
 
   // Inject cookies
   if (swConfig.cookiesEnabled) {
-    try {
-      const domain = new URL(targetUrl).hostname;
-      const cookies = cookieJar.get(domain);
-      if (cookies && cookies.length > 0) {
-        const valid = cookies.filter(c => !c.expires || c.expires > Date.now());
-        if (valid.length > 0) {
-          reqHeaders.set('Cookie', valid.map(c => c.name + '=' + c.value).join('; '));
+    // Try NeptuneCookies module first
+    var cookieMod = _useModule('NeptuneCookies');
+    if (cookieMod) {
+      try {
+        var cookieHeader = cookieMod.getCookieHeader(targetUrl);
+        if (cookieHeader) reqHeaders.set('Cookie', cookieHeader);
+      } catch(e) {}
+    } else {
+      try {
+        const domain = new URL(targetUrl).hostname;
+        const cookies = cookieJar.get(domain);
+        if (cookies && cookies.length > 0) {
+          const valid = cookies.filter(c => !c.expires || c.expires > Date.now());
+          if (valid.length > 0) {
+            reqHeaders.set('Cookie', valid.map(c => c.name + '=' + c.value).join('; '));
+          }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
   }
 
   // Check cache
   if (swConfig.cacheEnabled && req.method === 'GET') {
-    try {
-      const cache = await caches.open(CACHE_NAME);
-      const cached = await cache.match(req);
-      if (cached) {
-        const cachedTime = parseInt(cached.headers.get('x-neptune-cached') || '0');
-        if (Date.now() - cachedTime < swConfig.maxCacheAge) {
+    // Try NeptuneCache module first
+    var cacheMod = _useModule('NeptuneCache');
+    if (cacheMod) {
+      try {
+        var cachedResp = await cacheMod.get(req, swConfig.maxCacheAge);
+        if (cachedResp) {
           logRequest({
-            url: url.toString(), method: req.method, status: cached.status,
-            type: cached.headers.get('content-type') || 'unknown',
+            url: url.toString(), method: req.method, status: cachedResp.status,
+            type: cachedResp.headers.get('content-type') || 'unknown',
             size: 0, duration: Math.round(performance.now() - startTime),
             strategy: 'cache', fromCache: true,
           });
-          return cached;
+          return cachedResp;
         }
-      }
-    } catch (e) {}
+      } catch(e) {}
+    } else {
+      // Fallback inline cache
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(req);
+        if (cached) {
+          const cachedTime = parseInt(cached.headers.get('x-neptune-cached') || '0');
+          if (Date.now() - cachedTime < swConfig.maxCacheAge) {
+            logRequest({
+              url: url.toString(), method: req.method, status: cached.status,
+              type: cached.headers.get('content-type') || 'unknown',
+              size: 0, duration: Math.round(performance.now() - startTime),
+              strategy: 'cache', fromCache: true,
+            });
+            return cached;
+          }
+        }
+      } catch (e) {}
+    }
   }
 
   // Strategy selection
@@ -494,6 +550,12 @@ function parseFilename(cd, fallback) {
 // Cookie Storage
 // ════════════════════════════════════════════════════════
 function storeCookie(targetUrl, setCookieHeader) {
+  // Delegate to NeptuneCookies if injected
+  var mod = _useModule('NeptuneCookies');
+  if (mod) {
+    try { mod.storeCookie(targetUrl, setCookieHeader); return; } catch(e) {}
+  }
+  // Fallback inline implementation
   try {
     const domain = new URL(targetUrl).hostname;
     if (!cookieJar.has(domain)) cookieJar.set(domain, []);
@@ -573,6 +635,12 @@ function parseSingleCookie(str) {
 // Request Logger
 // ════════════════════════════════════════════════════════
 function logRequest(entry) {
+  // Delegate to NeptuneLogger if injected
+  var mod = _useModule('NeptuneLogger');
+  if (mod) {
+    try { mod.log(entry); } catch(e) {}
+  }
+  // Always keep local log for compatibility
   entry.timestamp = Date.now();
   requestLog.unshift(entry);
   if (requestLog.length > MAX_LOG) requestLog.pop();
@@ -789,14 +857,123 @@ iframe{width:100%;height:100%;border:none;background:#fff}
 // ════════════════════════════════════════════════════════
 // HTML Transformation (CORS mode)
 // ════════════════════════════════════════════════════════
+
+/**
+ * Inject page-level scripts: fingerprint, tracker stripping,
+ * dark mode, bridge, and runtime into already-rewritten HTML.
+ * Used after NeptuneRewriter handles URL rewriting.
+ */
+function _injectPageScripts(html, targetUrl, origin, cfg, targetOrigin, proxyRoot) {
+  var out = html;
+
+  // Inject fingerprint randomization engine (before any page scripts)
+  if (cfg.fingerprintCode && cfg.fingerprintCode.length > 0) {
+    var fpScript = '<script id="__nptn_fingerprint">' + cfg.fingerprintCode + '</script>';
+    if (out.indexOf('<head>') !== -1) {
+      out = out.replace('<head>', '<head>' + fpScript);
+    } else if (out.indexOf('<html>') !== -1) {
+      out = out.replace('<html>', '<html><head>' + fpScript + '</head>');
+    } else {
+      out = fpScript + out;
+    }
+  }
+
+  // Strip tracker scripts
+  if (cfg.stripTrackers) {
+    out = out.replace(/<script[^>]*src=["']([^"']*(?:google-analytics|gtag|googletagmanager|doubleclick|facebook\.com\/tr|mixpanel|amplitude|segment|hotjar|clarity\.ms|tracker|pixel|beacon|telemetry)[^"']*)["'][^>]*><\/script>/gi, '<!-- neptune: tracker blocked -->');
+    out = out.replace(/<script[^>]*>\s*(?:[\s\S]*?(?:gtag\s*\(|ga\s*\(\s*['"]create['"]\s*,|GoogleAnalyticsObject|analytics\.load|mixpanel\.init|amplitude\.init|clarity\s*\(|hj\s*\())\s*[\s\S]*?<\/script>/gi, '<!-- neptune: inline tracker blocked -->');
+    out = out.replace(/<img[^>]*src=["']([^"']*(?:pixel|beacon|tracker|analytics)[^"']*)["'][^>]*\/?>/gi, '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" />');
+    out = out.replace(/<noscript>\s*<iframe[^>]*src=["']https?:\/\/www\.googletagmanager\.com[^"']*["'][^>]*><\/iframe>\s*<\/noscript>/gi, '<!-- neptune: GTM noscript blocked -->');
+  }
+
+  // Dark mode injection
+  if (cfg.darkMode) {
+    var darkCSS = '<style id="__nptn_dark">html,body{background:#0a0a0f!important;color:#ddd!important}body *{background-color:transparent!important;color:#ccc!important;border-color:#333!important}a{color:#00ff88!important}</style>';
+    if (out.indexOf('</head>') !== -1) {
+      out = out.replace('</head>', darkCSS + '</head>');
+    } else {
+      out = darkCSS + out;
+    }
+  }
+
+  // Bridge script for parent \u2194 iframe communication
+  var bridgeScript = cfg.injectBridge ?
+    '<script id="__nptn_bridge">(function(){"use strict";if(window.__nptn_bridge)return;window.__nptn_bridge=true;' +
+    'var parentOrigin="' + origin + '";' +
+    'window.addEventListener("message",function(e){if(!e.data||!e.data.__nptn)return;' +
+    'if(e.source!==window.parent)return;var d=e.data;' +
+    'if(d.type==="eval"){try{var r=eval(d.code);e.source.postMessage({__nptn:true,type:"eval_result",id:d.id,result:String(r),error:null},"*");}catch(ex){e.source.postMessage({__nptn:true,type:"eval_result",id:d.id,result:null,error:ex.message},"*");}}' +
+    'if(d.type==="get_title"){e.source.postMessage({__nptn:true,type:"title",title:document.title},"*");}' +
+    'if(d.type==="get_html"){e.source.postMessage({__nptn:true,type:"html",html:document.documentElement.outerHTML},"*");}' +
+    'if(d.type==="get_text"){e.source.postMessage({__nptn:true,type:"text",text:document.body.innerText},"*");}' +
+    'if(d.type==="scroll_to"){window.scrollTo(d.x||0,d.y||0);}' +
+    'if(d.type==="click"){var el=document.elementFromPoint(d.x,d.y);if(el)el.click();}' +
+    'if(d.type==="css"){var s=document.getElementById("__nptn_user_css");if(!s){s=document.createElement("style");s.id="__nptn_user_css";document.head.appendChild(s);}s.textContent=d.css;}' +
+    '});' +
+    'var op=history.pushState,or=history.replaceState;' +
+    'history.pushState=function(){op.apply(this,arguments);window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");};' +
+    'history.replaceState=function(){or.apply(this,arguments);window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");};' +
+    'window.addEventListener("popstate",function(){window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");});' +
+    'window.addEventListener("DOMContentLoaded",function(){window.parent.postMessage({__nptn:true,type:"ready",title:document.title,url:location.href},"*");});' +
+    '})();</script>' : '';
+
+  // Runtime for intercepting fetch/XHR/clicks/forms
+  var runtime = '<script id="__nptn_runtime">(function(){"use strict";if(window.__nptn_injected)return;window.__nptn_injected=true;' +
+    'var base="' + targetOrigin + '",proxy="' + proxyRoot + '";' +
+    'function p(u){if(!u||u.startsWith("data:")||u.startsWith("blob:"))return u;' +
+    'if((u.startsWith("http://")||u.startsWith("https://"))&&!u.startsWith(location.origin))return proxy+encodeURIComponent(u);' +
+    'if(u.startsWith("//"))return proxy+encodeURIComponent("https:"+u);' +
+    'if(u.startsWith("/")&&!u.startsWith("/proxy"))return proxy+encodeURIComponent(base+u);return u;}' +
+    'var of=window.fetch;' +
+    'window.fetch=function(i,init){if(typeof i==="string"){var u=i;' +
+    'if(u&&u.startsWith("http")&&!u.startsWith(location.origin))u=p(u);' +
+    'else if(u&&u.startsWith("/")&&!u.startsWith("/proxy"))u=p(u);return of(u,init);}' +
+    'if(i&&i.url){var u=i.url;' +
+    'if(u&&u.startsWith("http")&&!u.startsWith(location.origin))u=p(u);' +
+    'else if(u&&u.startsWith("/")&&!u.startsWith("/proxy"))u=p(u);return of(new Request(u,i),init);}return of(i,init);};' +
+    'var ox=XMLHttpRequest.prototype.open;' +
+    'XMLHttpRequest.prototype.open=function(m,u,a,uu,pp){if(u&&u.startsWith("http")&&!u.startsWith(location.origin)){u=p(u);}' +
+    'else if(u&&u.startsWith("/")&&!u.startsWith("/proxy")){u=p(u);}return ox.call(this,m,u,a,uu,pp);};' +
+    'document.addEventListener("click",function(e){var a=e.target.closest("a");if(!a)return;var h=a.getAttribute("href");' +
+    'if(h&&!h.startsWith("javascript:")&&!h.startsWith("#")&&!h.startsWith("mailto:")&&!h.startsWith("tel:"))' +
+    '{if(h.startsWith("http")||h.startsWith("/")){a.setAttribute("href",p(h));}}},true);' +
+    'document.addEventListener("submit",function(e){var f=e.target;if(f.tagName!=="FORM")return;var a=f.getAttribute("action");' +
+    'if(a&&a.startsWith("http")&&!a.startsWith(location.origin)){f.setAttribute("action",p(a));}' +
+    'else if(a&&a.startsWith("/")&&!a.startsWith("/proxy")){f.setAttribute("action",p(a));}},true);' +
+    'var op=history.pushState,or2=history.replaceState;' +
+    'function patchHistory(orig){return function(){var args=Array.from(arguments);if(args.length>=3&&typeof args[2]==="string"){args[2]=p(args[2]);}return orig.apply(this,args);};}' +
+    'history.pushState=patchHistory(op);history.replaceState=patchHistory(or2);' +
+    'window.addEventListener("popstate",function(){if(window.__nptn_navigate)window.__nptn_navigate(location.href);});' +
+    '})();</script>';
+
+  // Inject scripts
+  if (out.indexOf('</head>') !== -1) {
+    out = out.replace('</head>', bridgeScript + runtime + '</head>');
+  } else if (out.indexOf('<body') !== -1) {
+    out = out.replace('<body', bridgeScript + runtime + '<body');
+  } else {
+    out = bridgeScript + runtime + out;
+  }
+
+  return out;
+}
+
 function transformHTML(html, targetUrl, origin, cfg) {
-  let t;
-  try { t = new URL(targetUrl); } catch(e) { return html; }
+  // Delegate to NeptuneRewriter if injected
+  var rwMod = _useModule('NeptuneRewriter');
+  try { var t = new URL(targetUrl); } catch(e) { return html; }
+  var targetOrigin = t.origin;
+  var proxyRoot = PROXY_ROOT;
 
-  // Use SW's own location to compute proxy path (works with any CDN path)
-  const proxyRoot = PROXY_ROOT;
-  const targetOrigin = t.origin;
-
+  if (rwMod) {
+    try {
+      var rewritten = rwMod.rewriteHTML(html, targetOrigin, proxyRoot);
+      // Inject fingerprint, bridge, runtime (NeptuneRewriter doesn't do these)
+      rewritten = _injectPageScripts(rewritten, targetUrl, origin, cfg, targetOrigin, proxyRoot);
+      return rewritten;
+    } catch(e) {}
+  }
+  // Fallback inline implementation
   const toProxy = (u) => {
     if (!u || u.startsWith('data:') || u.startsWith('blob:')) return u;
     // Already rewritten — don't double-wrap
@@ -977,6 +1154,12 @@ function resolveURL(rel, base) {
 }
 
 function sanitizeHeaders(headers) {
+  // Delegate to NeptuneSecurity if injected
+  var mod = _useModule('NeptuneSecurity');
+  if (mod) {
+    try { return mod.sanitizeResponseHeaders(headers); } catch(e) {}
+  }
+  // Fallback inline implementation
   const safe = new Headers();
   const drop = [
     'set-cookie','content-security-policy','content-security-policy-report-only',
@@ -1221,6 +1404,26 @@ function handleNetAdaptClose(d, src) {
  *   - Timing jitter (handled by caller via setTimeout)
  */
 function buildObfuscatedRequest(method, host, headers, body) {
+  // Delegate to NeptuneObfuscator if injected
+  var mod = _useModule('NeptuneObfuscator');
+  if (mod) {
+    try {
+      var reqHeaders = new Headers();
+      for (var hk in headers) { reqHeaders.set(hk, headers[hk]); }
+      mod.applyHeaders(reqHeaders, { stripReferer: false });
+      var init = {
+        method: method,
+        redirect: 'follow',
+        cache: 'no-store',
+        mode: 'cors',
+        headers: reqHeaders,
+      };
+      if (body && body.length > 0) init.body = new Uint8Array(body);
+      if (swConfig.userAgent) init.headers.set('user-agent', swConfig.userAgent);
+      return init;
+    } catch(e) {}
+  }
+  // Fallback inline implementation
   const init = {
     method: method,
     redirect: 'follow',
