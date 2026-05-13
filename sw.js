@@ -14,32 +14,46 @@
  * Fallback: iframe visual proxy for sites that can't be fetched.
  */
 
-const SW_VERSION = '2.0.0';
+const SW_VERSION = "2.0.0";
 
 // Scope-relative proxy path computed from SW's own location.
 // Works on any CDN path (e.g., /gh/user/repo@main/proxy or /proxy).
-const PROXY_PATH = self.location.pathname.replace(/\/[^/]*$/, '') + '/proxy';
-const PROXY_ROOT = self.location.origin + PROXY_PATH + '?url=';
+// CDN-compatible proxy path. On CDN (jsDelivr, gstatic) or localhost, the
+// SW intercepts same-origin requests to neptune.svg?url=...&__nptn=1.
+// No separate /proxy path needed. Page sends SET_PROXY_PATH to override
+// when registered from a blob URL (self.location is the blob, not the page).
+var PROXY_PATH, PROXY_ROOT;
+function deriveProxyPath() {
+  try {
+    var p = self.location.pathname.replace(/\/[^/]*$/, "/neptune.svg");
+    PROXY_PATH = p;
+    PROXY_ROOT = self.location.origin + p + "?url=";
+  } catch (e) {
+    PROXY_PATH = "/neptune.svg";
+    PROXY_ROOT = self.location.origin + "/neptune.svg?url=";
+  }
+}
+deriveProxyPath();
 
 // ── Core State ──────────────────────────────────────────
-let activeTarget   = null;
+let activeTarget = null;
 let activeStrategy = null;
-let corsFriendly   = false;
+let corsFriendly = false;
 
 // ── Config (mutable via postMessage) ───────────────────
 const swConfig = {
-  userAgent:          null,
-  customHeaders:      {},
-  cookiesEnabled:     true,
-  trackerBlocking:    true,
-  cacheEnabled:       true,
-  maxCacheAge:        86400000,
-  urlWhitelist:       [],
-  urlBlacklist:       [],
-  injectBridge:       true,
-  fingerprintCode:    null,  // Injected fingerprint randomization engine
-  stripTrackers:      true,
-  darkMode:           false,
+  userAgent: null,
+  customHeaders: {},
+  cookiesEnabled: true,
+  trackerBlocking: true,
+  cacheEnabled: true,
+  maxCacheAge: 86400000,
+  urlWhitelist: [],
+  urlBlacklist: [],
+  injectBridge: true,
+  fingerprintCode: null, // Injected fingerprint randomization engine
+  stripTrackers: true,
+  darkMode: false,
 };
 
 // ── Cookie jar: domain → [{name,value,path,expires}] ──
@@ -47,201 +61,249 @@ const cookieJar = new Map();
 
 // ── Request log (capped) ───────────────────────────────
 const requestLog = [];
-const MAX_LOG    = 500;
+const MAX_LOG = 500;
 
 // ── Stats ──────────────────────────────────────────────
-let totalBytes    = 0;
+let totalBytes = 0;
 let totalRequests = 0;
-let blockedCount  = 0;
-let startTime     = Date.now();
+let blockedCount = 0;
+let startTime = Date.now();
 
 // ── Cache ───────────────────────────────────────────────
-const CACHE_NAME = 'neptune-v2';
+const CACHE_NAME = "neptune-v2";
 
 // ── Engine Module Delegation ──────────────────────────
 // When engine modules are injected via SET_MODULES, use them.
 // Falls back to inline implementations when modules are absent.
 function _useModule(name) {
-  try { return self[name] || null; } catch(e) { return null; }
+  try {
+    return self[name] || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 // ── Known tracker patterns ─────────────────────────────
 const TRACKER_PATTERNS = [
-  'google-analytics','googletagmanager','doubleclick','googleadservices',
-  'facebook.com/tr','fbcdn.net','connect.facebook.net',
-  'twitter.com/i/ads','analytics.twitter.com',
-  'mixpanel','amplitude.com','segment.io','segment.com',
-  'hotjar','clarity.ms','gtag','google.tag',
-  'tracker','pixel','beacon','telemetry',
-  'optimizely','crazyegg','mouseflow','fullstory',
-  ' quantserve','scorecardresearch','moatads',
-  'outbrain','taboola','sharethrough',
-  'adsystem','adnxs','adsrvr','advertising',
-  'outbrain','taboola','revcontent',
+  "google-analytics",
+  "googletagmanager",
+  "doubleclick",
+  "googleadservices",
+  "facebook.com/tr",
+  "fbcdn.net",
+  "connect.facebook.net",
+  "twitter.com/i/ads",
+  "analytics.twitter.com",
+  "mixpanel",
+  "amplitude.com",
+  "segment.io",
+  "segment.com",
+  "hotjar",
+  "clarity.ms",
+  "gtag",
+  "google.tag",
+  "tracker",
+  "pixel",
+  "beacon",
+  "telemetry",
+  "optimizely",
+  "crazyegg",
+  "mouseflow",
+  "fullstory",
+  " quantserve",
+  "scorecardresearch",
+  "moatads",
+  "outbrain",
+  "taboola",
+  "sharethrough",
+  "adsystem",
+  "adnxs",
+  "adsrvr",
+  "advertising",
+  "outbrain",
+  "taboola",
+  "revcontent",
 ];
 
 // ════════════════════════════════════════════════════════
 // Lifecycle
 // ════════════════════════════════════════════════════════
-self.addEventListener('install', e => {
-  console.log('[SW] Installing v' + SW_VERSION);
+self.addEventListener("install", (e) => {
+  console.log("[SW] Installing v" + SW_VERSION);
   e.waitUntil(self.skipWaiting());
 });
 
-self.addEventListener('activate', e => {
-  console.log('[SW] Activated v' + SW_VERSION);
-  e.waitUntil(
-    Promise.all([
-      clients.claim(),
-      caches.open(CACHE_NAME),
-    ])
-  );
+self.addEventListener("activate", (e) => {
+  console.log("[SW] Activated v" + SW_VERSION);
+  e.waitUntil(Promise.all([clients.claim(), caches.open(CACHE_NAME)]));
 });
 
 // ════════════════════════════════════════════════════════
 // Message API
 // ════════════════════════════════════════════════════════
-self.addEventListener('message', e => {
+self.addEventListener("message", (e) => {
   const d = e.data;
   if (!d || !d.type) return;
   const src = e.source;
 
   switch (d.type) {
-    case 'SKIP_WAITING':
+    case "SKIP_WAITING":
       self.skipWaiting();
       break;
 
-    case 'SET_TARGET':
+    case "SET_TARGET":
       activeTarget = d.url;
-      console.log('[SW] Target:', activeTarget);
-      detectStrategy(activeTarget).then(s => {
+      console.log("[SW] Target:", activeTarget);
+      detectStrategy(activeTarget).then((s) => {
         activeStrategy = s.strategy;
-        corsFriendly   = s.cors || false;
+        corsFriendly = s.cors || false;
         broadcast({
-          type: 'STRATEGY_SELECTED',
+          type: "STRATEGY_SELECTED",
           strategy: activeStrategy,
           cors: corsFriendly,
           timing: s.timing || 0,
         });
       });
-      broadcast({ type: 'TARGET_SET', url: activeTarget });
+      broadcast({ type: "TARGET_SET", url: activeTarget });
       break;
 
-    case 'SET_STRATEGY':
+    case "SET_STRATEGY":
       activeStrategy = d.strategy;
-      console.log('[SW] Strategy set:', d.strategy);
+      console.log("[SW] Strategy set:", d.strategy);
       break;
 
-    case 'SET_CONFIG':
-      if (d.userAgent !== undefined)        swConfig.userAgent        = d.userAgent;
-      if (d.customHeaders)                    Object.assign(swConfig.customHeaders, d.customHeaders);
-      if (d.cookiesEnabled !== undefined)     swConfig.cookiesEnabled   = d.cookiesEnabled;
-      if (d.trackerBlocking !== undefined)    swConfig.trackerBlocking  = d.trackerBlocking;
-      if (d.cacheEnabled !== undefined)       swConfig.cacheEnabled     = d.cacheEnabled;
-      if (d.maxCacheAge !== undefined)       swConfig.maxCacheAge      = d.maxCacheAge;
-      if (d.urlWhitelist)                     swConfig.urlWhitelist     = d.urlWhitelist;
-      if (d.urlBlacklist)                     swConfig.urlBlacklist     = d.urlBlacklist;
-      if (d.injectBridge !== undefined)       swConfig.injectBridge     = d.injectBridge;
-      if (d.fingerprintCode !== undefined)       swConfig.fingerprintCode  = d.fingerprintCode;
-      if (d.stripTrackers !== undefined)      swConfig.stripTrackers    = d.stripTrackers;
-      if (d.darkMode !== undefined)           swConfig.darkMode         = d.darkMode;
-      if (src) src.postMessage({ type: 'CONFIG_ACK', config: swConfig });
-      else broadcast({ type: 'CONFIG_ACK', config: swConfig });
+    case "SET_PROXY_PATH":
+      if (d.proxyPath) PROXY_PATH = d.proxyPath;
+      if (d.proxyRoot) PROXY_ROOT = d.proxyRoot;
+      console.log("[SW] Proxy path set:", PROXY_PATH);
       break;
 
-    case 'GET_CONFIG':
-      if (src) src.postMessage({ type: 'CONFIG_DATA', config: swConfig });
+    case "SET_CONFIG":
+      if (d.userAgent !== undefined) swConfig.userAgent = d.userAgent;
+      if (d.customHeaders)
+        Object.assign(swConfig.customHeaders, d.customHeaders);
+      if (d.cookiesEnabled !== undefined)
+        swConfig.cookiesEnabled = d.cookiesEnabled;
+      if (d.trackerBlocking !== undefined)
+        swConfig.trackerBlocking = d.trackerBlocking;
+      if (d.cacheEnabled !== undefined) swConfig.cacheEnabled = d.cacheEnabled;
+      if (d.maxCacheAge !== undefined) swConfig.maxCacheAge = d.maxCacheAge;
+      if (d.urlWhitelist) swConfig.urlWhitelist = d.urlWhitelist;
+      if (d.urlBlacklist) swConfig.urlBlacklist = d.urlBlacklist;
+      if (d.injectBridge !== undefined) swConfig.injectBridge = d.injectBridge;
+      if (d.fingerprintCode !== undefined)
+        swConfig.fingerprintCode = d.fingerprintCode;
+      if (d.stripTrackers !== undefined)
+        swConfig.stripTrackers = d.stripTrackers;
+      if (d.darkMode !== undefined) swConfig.darkMode = d.darkMode;
+      if (src) src.postMessage({ type: "CONFIG_ACK", config: swConfig });
+      else broadcast({ type: "CONFIG_ACK", config: swConfig });
       break;
 
-    case 'GET_LOG':
-      if (src) src.postMessage({ type: 'LOG_DATA', entries: requestLog.slice(0, d.limit || 100) });
+    case "GET_CONFIG":
+      if (src) src.postMessage({ type: "CONFIG_DATA", config: swConfig });
       break;
 
-    case 'CLEAR_LOG':
+    case "GET_LOG":
+      if (src)
+        src.postMessage({
+          type: "LOG_DATA",
+          entries: requestLog.slice(0, d.limit || 100),
+        });
+      break;
+
+    case "CLEAR_LOG":
       requestLog.length = 0;
       totalBytes = 0;
       totalRequests = 0;
       blockedCount = 0;
-      broadcast({ type: 'LOG_CLEARED' });
+      broadcast({ type: "LOG_CLEARED" });
       break;
 
-    case 'CLEAR_CACHE':
+    case "CLEAR_CACHE":
       caches.delete(CACHE_NAME).then(() => {
         caches.open(CACHE_NAME);
-        broadcast({ type: 'CACHE_CLEARED' });
+        broadcast({ type: "CACHE_CLEARED" });
       });
       break;
 
-    case 'GET_STATS':
-      if (src) src.postMessage({
-        type: 'STATS_DATA',
-        totalBytes,
-        totalRequests,
-        blockedCount,
-        uptime: Date.now() - startTime,
-        activeTarget,
-        activeStrategy,
-        corsFriendly,
-        logSize: requestLog.length,
-        cacheName: CACHE_NAME,
-      });
+    case "GET_STATS":
+      if (src)
+        src.postMessage({
+          type: "STATS_DATA",
+          totalBytes,
+          totalRequests,
+          blockedCount,
+          uptime: Date.now() - startTime,
+          activeTarget,
+          activeStrategy,
+          corsFriendly,
+          logSize: requestLog.length,
+          cacheName: CACHE_NAME,
+        });
       break;
 
-    case 'PURGE_COOKIES':
+    case "PURGE_COOKIES":
       cookieJar.clear();
-      broadcast({ type: 'COOKIES_PURGED' });
+      broadcast({ type: "COOKIES_PURGED" });
       break;
 
     // ── Engine Module Injection ───────────────────────
-    case 'SET_MODULES':
+    case "SET_MODULES":
       if (d.modules) {
         for (var mName in d.modules) {
           try {
             eval(d.modules[mName]);
-            console.log('[SW] Loaded module: ' + mName);
+            console.log("[SW] Loaded module: " + mName);
           } catch (er) {
-            console.error('[SW] Module ' + mName + ' failed: ' + er.message);
+            console.error("[SW] Module " + mName + " failed: " + er.message);
           }
         }
-        if (src) src.postMessage({ type: 'MODULES_LOADED', count: Object.keys(d.modules).length });
+        if (src)
+          src.postMessage({
+            type: "MODULES_LOADED",
+            count: Object.keys(d.modules).length,
+          });
       }
       break;
 
     // ── Network Adapter Bridge ──────────────────────────
-    case 'NET_ADAPT_CONNECT':
-      handleNetAdaptConnect(d, src).catch(e => {
-        console.error('[SW] NET_ADAPT_CONNECT error:', e.message);
+    case "NET_ADAPT_CONNECT":
+      handleNetAdaptConnect(d, src).catch((e) => {
+        console.error("[SW] NET_ADAPT_CONNECT error:", e.message);
       });
       break;
 
-    case 'NET_ADAPT_DATA':
-      handleNetAdaptData(d, src).catch(e => {
-        console.error('[SW] NET_ADAPT_DATA error:', e.message);
-        if (src) src.postMessage({
-          type: 'NET_ADAPT_ERROR',
-          localPort: d.localPort,
-          error: e.message,
-        });
+    case "NET_ADAPT_DATA":
+      handleNetAdaptData(d, src).catch((e) => {
+        console.error("[SW] NET_ADAPT_DATA error:", e.message);
+        if (src)
+          src.postMessage({
+            type: "NET_ADAPT_ERROR",
+            localPort: d.localPort,
+            error: e.message,
+          });
       });
       break;
 
-    case 'NET_ADAPT_CLOSE':
+    case "NET_ADAPT_CLOSE":
       handleNetAdaptClose(d, src);
       break;
 
     // ── WebSocket Relay ──────────────────────────────
-    case 'WS_CONNECT':
-      handleWsConnect(d, src).catch(e => {
-        console.error('[SW] WS_CONNECT error:', e.message);
-        if (src) src.postMessage({ type: 'WS_ERROR', wsId: 0, error: e.message });
+    case "WS_CONNECT":
+      handleWsConnect(d, src).catch((e) => {
+        console.error("[SW] WS_CONNECT error:", e.message);
+        if (src)
+          src.postMessage({ type: "WS_ERROR", wsId: 0, error: e.message });
       });
       break;
 
-    case 'WS_SEND':
+    case "WS_SEND":
       handleWsSend(d, src);
       break;
 
-    case 'WS_CLOSE':
+    case "WS_CLOSE":
       handleWsClose(d, src);
       break;
   }
@@ -256,14 +318,14 @@ async function detectStrategy(targetUrl) {
   const start = performance.now();
   try {
     const resp = await fetch(targetUrl, {
-      method: 'HEAD',
-      cache: 'no-store',
-      redirect: 'follow',
+      method: "HEAD",
+      cache: "no-store",
+      redirect: "follow",
     });
     const timing = Math.round(performance.now() - start);
     // If we can read the response (not opaque), CORS is friendly
-    if (resp.type !== 'opaque' && resp.type !== 'error') {
-      return { strategy: 'cors', cors: true, timing };
+    if (resp.type !== "opaque" && resp.type !== "error") {
+      return { strategy: "cors", cors: true, timing };
     }
   } catch (e) {}
 
@@ -271,35 +333,42 @@ async function detectStrategy(targetUrl) {
   try {
     const start2 = performance.now();
     const resp = await fetch(targetUrl, {
-      method: 'GET',
-      cache: 'no-store',
-      redirect: 'follow',
+      method: "GET",
+      cache: "no-store",
+      redirect: "follow",
     });
     await resp.text();
     const timing = Math.round(performance.now() - start2);
-    return { strategy: 'cors', cors: true, timing };
+    return { strategy: "cors", cors: true, timing };
   } catch (e) {}
 
-  return { strategy: 'iframe', cors: false };
+  return { strategy: "iframe", cors: false };
 }
 
 // ════════════════════════════════════════════════════════
 // Fetch Interception
 // ════════════════════════════════════════════════════════
-self.addEventListener('fetch', e => {
+self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
   // Proxy-mode detection:
   //   __nptn → iframe navigation created by loadTabContent (always proxy)
   //   url param on /proxy path → subresource proxying (always proxy)
   //   url param WITHOUT __nptn on neptune.svg → INITIAL SVG LOAD, do NOT intercept
-  const isProxyNav = url.searchParams.has('__nptn');
-  const isProxySub = url.pathname === PROXY_PATH && url.searchParams.has('url');
+  const isProxyNav = url.searchParams.has("__nptn");
+  const isProxySub = url.pathname === PROXY_PATH && url.searchParams.has("url");
   const isProxyRequest = isProxyNav || isProxySub;
 
   if (!isProxyRequest) {
-    const skip = ['neptune.svg','template.svg','sw.js','server.py','build.py','index.html'];
-    if (skip.some(s => url.pathname.endsWith(s))) return;
+    const skip = [
+      "neptune.svg",
+      "template.svg",
+      "sw.js",
+      "server.py",
+      "build.py",
+      "index.html",
+    ];
+    if (skip.some((s) => url.pathname.endsWith(s))) return;
     if (url.pathname === PROXY_PATH) return;
   }
 
@@ -313,9 +382,14 @@ self.addEventListener('fetch', e => {
     blockedCount++;
     e.respondWith(blockedResponse(targetStr));
     logRequest({
-      url: targetStr, method: e.request.method, status: 403,
-      type: 'filter', size: 0, duration: 0, strategy: 'blocked',
-      error: 'URL blocked by filter',
+      url: targetStr,
+      method: e.request.method,
+      status: 403,
+      type: "filter",
+      size: 0,
+      duration: 0,
+      strategy: "blocked",
+      error: "URL blocked by filter",
     });
     return;
   }
@@ -325,9 +399,14 @@ self.addEventListener('fetch', e => {
     blockedCount++;
     e.respondWith(trackerBlockResponse(e.request.destination));
     logRequest({
-      url: targetStr, method: e.request.method, status: 200,
-      type: 'tracker-blocked', size: 0, duration: 0, strategy: 'block',
-      error: 'Tracker blocked',
+      url: targetStr,
+      method: e.request.method,
+      status: 200,
+      type: "tracker-blocked",
+      size: 0,
+      duration: 0,
+      strategy: "block",
+      error: "Tracker blocked",
     });
     return;
   }
@@ -338,23 +417,35 @@ self.addEventListener('fetch', e => {
 function shouldIntercept(url, req) {
   // Proxy-mode: __nptn (iframe nav) or proxy?url= (subresource) always pass.
   // url param WITHOUT __nptn on neptune.svg is the INITIAL SVG LOAD — skip it.
-  if (url.searchParams.has('__nptn')) return true;
-  if (url.pathname === PROXY_PATH && url.searchParams.has('url')) return true;
+  if (url.searchParams.has("__nptn")) return true;
+  if (url.pathname === PROXY_PATH && url.searchParams.has("url")) return true;
 
-  const localAssets = ['/neptune.svg','/template.svg','/sw.js','/server.py','/build.py','/index.html'];
-  if (localAssets.some(a => url.pathname === a || url.pathname.endsWith(a))) return false;
+  const localAssets = [
+    "/neptune.svg",
+    "/template.svg",
+    "/sw.js",
+    "/server.py",
+    "/build.py",
+    "/index.html",
+  ];
+  if (localAssets.some((a) => url.pathname === a || url.pathname.endsWith(a)))
+    return false;
   const ref = req.referrer ? new URL(req.referrer) : null;
-  if (ref && ref.searchParams.has('__nptn')) return true;
+  if (ref && ref.searchParams.has("__nptn")) return true;
   if (url.origin === self.location.origin) return true;
   return false;
 }
 
 function checkUrlFilter(url) {
   if (swConfig.urlBlacklist.length > 0) {
-    for (const p of swConfig.urlBlacklist) { if (url.includes(p)) return false; }
+    for (const p of swConfig.urlBlacklist) {
+      if (url.includes(p)) return false;
+    }
   }
   if (swConfig.urlWhitelist.length > 0) {
-    for (const p of swConfig.urlWhitelist) { if (url.includes(p)) return true; }
+    for (const p of swConfig.urlWhitelist) {
+      if (url.includes(p)) return true;
+    }
     return false;
   }
   return true;
@@ -362,7 +453,7 @@ function checkUrlFilter(url) {
 
 function isTrackerUrl(url) {
   // Delegate to NeptuneTracker if injected
-  var mod = _useModule('NeptuneTracker');
+  var mod = _useModule("NeptuneTracker");
   if (mod) {
     var result = mod.isTracker(url);
     return result.blocked;
@@ -383,8 +474,13 @@ async function handleProxy(req, url) {
   let targetUrl;
 
   // Parse proxy URL
-  if (url.searchParams.has('__nptn') || url.searchParams.has('url') || url.searchParams.has('')) {
-    targetUrl = url.searchParams.get('url') || url.searchParams.get('') || activeTarget;
+  if (
+    url.searchParams.has("__nptn") ||
+    url.searchParams.has("url") ||
+    url.searchParams.has("")
+  ) {
+    targetUrl =
+      url.searchParams.get("url") || url.searchParams.get("") || activeTarget;
   } else if (url.origin === self.location.origin) {
     const rel = url.pathname + url.search;
     targetUrl = resolveURL(rel, activeTarget);
@@ -393,13 +489,13 @@ async function handleProxy(req, url) {
   }
 
   if (!targetUrl) {
-    return errorResponse('No target configured', 400);
+    return errorResponse("No target configured", 400);
   }
 
   // Build request headers
   const reqHeaders = new Headers(req.headers);
   if (swConfig.userAgent) {
-    reqHeaders.set('User-Agent', swConfig.userAgent);
+    reqHeaders.set("User-Agent", swConfig.userAgent);
   }
   for (const [k, v] of Object.entries(swConfig.customHeaders)) {
     reqHeaders.set(k, v);
@@ -408,20 +504,25 @@ async function handleProxy(req, url) {
   // Inject cookies
   if (swConfig.cookiesEnabled) {
     // Try NeptuneCookies module first
-    var cookieMod = _useModule('NeptuneCookies');
+    var cookieMod = _useModule("NeptuneCookies");
     if (cookieMod) {
       try {
         var cookieHeader = cookieMod.getCookieHeader(targetUrl);
-        if (cookieHeader) reqHeaders.set('Cookie', cookieHeader);
-      } catch(e) {}
+        if (cookieHeader) reqHeaders.set("Cookie", cookieHeader);
+      } catch (e) {}
     } else {
       try {
         const domain = new URL(targetUrl).hostname;
         const cookies = cookieJar.get(domain);
         if (cookies && cookies.length > 0) {
-          const valid = cookies.filter(c => !c.expires || c.expires > Date.now());
+          const valid = cookies.filter(
+            (c) => !c.expires || c.expires > Date.now(),
+          );
           if (valid.length > 0) {
-            reqHeaders.set('Cookie', valid.map(c => c.name + '=' + c.value).join('; '));
+            reqHeaders.set(
+              "Cookie",
+              valid.map((c) => c.name + "=" + c.value).join("; "),
+            );
           }
         }
       } catch (e) {}
@@ -429,35 +530,45 @@ async function handleProxy(req, url) {
   }
 
   // Check cache
-  if (swConfig.cacheEnabled && req.method === 'GET') {
+  if (swConfig.cacheEnabled && req.method === "GET") {
     // Try NeptuneCache module first
-    var cacheMod = _useModule('NeptuneCache');
+    var cacheMod = _useModule("NeptuneCache");
     if (cacheMod) {
       try {
         var cachedResp = await cacheMod.get(req, swConfig.maxCacheAge);
         if (cachedResp) {
           logRequest({
-            url: url.toString(), method: req.method, status: cachedResp.status,
-            type: cachedResp.headers.get('content-type') || 'unknown',
-            size: 0, duration: Math.round(performance.now() - startTime),
-            strategy: 'cache', fromCache: true,
+            url: url.toString(),
+            method: req.method,
+            status: cachedResp.status,
+            type: cachedResp.headers.get("content-type") || "unknown",
+            size: 0,
+            duration: Math.round(performance.now() - startTime),
+            strategy: "cache",
+            fromCache: true,
           });
           return cachedResp;
         }
-      } catch(e) {}
+      } catch (e) {}
     } else {
       // Fallback inline cache
       try {
         const cache = await caches.open(CACHE_NAME);
         const cached = await cache.match(req);
         if (cached) {
-          const cachedTime = parseInt(cached.headers.get('x-neptune-cached') || '0');
+          const cachedTime = parseInt(
+            cached.headers.get("x-neptune-cached") || "0",
+          );
           if (Date.now() - cachedTime < swConfig.maxCacheAge) {
             logRequest({
-              url: url.toString(), method: req.method, status: cached.status,
-              type: cached.headers.get('content-type') || 'unknown',
-              size: 0, duration: Math.round(performance.now() - startTime),
-              strategy: 'cache', fromCache: true,
+              url: url.toString(),
+              method: req.method,
+              status: cached.status,
+              type: cached.headers.get("content-type") || "unknown",
+              size: 0,
+              duration: Math.round(performance.now() - startTime),
+              strategy: "cache",
+              fromCache: true,
             });
             return cached;
           }
@@ -467,70 +578,97 @@ async function handleProxy(req, url) {
   }
 
   // Strategy selection
-  const isDocument = req.destination === 'document' || req.destination === 'iframe';
-  const strategies = activeStrategy && activeStrategy !== 'none'
-    ? [activeStrategy]
-    : (isDocument ? ['cors', 'iframe'] : ['cors', 'opaque']);
+  const isDocument =
+    req.destination === "document" || req.destination === "iframe";
+  const strategies =
+    activeStrategy && activeStrategy !== "none"
+      ? [activeStrategy]
+      : isDocument
+        ? ["cors", "iframe"]
+        : ["cors", "opaque"];
 
   let lastError;
   for (const strategy of strategies) {
     try {
-      const resp = await tryStrategy(strategy, targetUrl, req, reqHeaders, isDocument);
+      const resp = await tryStrategy(
+        strategy,
+        targetUrl,
+        req,
+        reqHeaders,
+        isDocument,
+      );
       if (resp) {
         const duration = Math.round(performance.now() - startTime);
-        const size = parseInt(resp.headers.get('content-length')) || 0;
+        const size = parseInt(resp.headers.get("content-length")) || 0;
         totalBytes += size;
         totalRequests++;
 
         // Store cookies from response
-      // Note: Standard Fetch API in Service Workers cannot read Set-Cookie headers
-      // (forbidden response-header name). We attempt CookieStore API where available.
-      if (swConfig.cookiesEnabled) {
-        try {
-          const setCookie = resp.headers.get('set-cookie');
-          if (setCookie) storeCookie(targetUrl, setCookie);
-        } catch(e) {}
-        // Fallback: CookieStore API (Chrome experimental)
-        if (typeof self.cookieStore !== 'undefined' && self.cookieStore.getAll) {
+        // Note: Standard Fetch API in Service Workers cannot read Set-Cookie headers
+        // (forbidden response-header name). We attempt CookieStore API where available.
+        if (swConfig.cookiesEnabled) {
           try {
-            const domain = new URL(targetUrl).hostname;
-            const all = await self.cookieStore.getAll({ domain });
-            for (const c of all) {
-              storeCookie(targetUrl, `${c.name}=${c.value}; domain=${domain}`);
-            }
-          } catch(e) {}
+            const setCookie = resp.headers.get("set-cookie");
+            if (setCookie) storeCookie(targetUrl, setCookie);
+          } catch (e) {}
+          // Fallback: CookieStore API (Chrome experimental)
+          if (
+            typeof self.cookieStore !== "undefined" &&
+            self.cookieStore.getAll
+          ) {
+            try {
+              const domain = new URL(targetUrl).hostname;
+              const all = await self.cookieStore.getAll({ domain });
+              for (const c of all) {
+                storeCookie(
+                  targetUrl,
+                  `${c.name}=${c.value}; domain=${domain}`,
+                );
+              }
+            } catch (e) {}
+          }
         }
-      }
 
         // Cache successful GETs
-        if (swConfig.cacheEnabled && req.method === 'GET' && resp.ok) {
+        if (swConfig.cacheEnabled && req.method === "GET" && resp.ok) {
           try {
             const cache = await caches.open(CACHE_NAME);
             const clone = resp.clone();
             const h = new Headers(clone.headers);
-            h.set('x-neptune-cached', Date.now().toString());
-            cache.put(req, new Response(clone.body, {
-              status: clone.status, statusText: clone.statusText, headers: h,
-            }));
+            h.set("x-neptune-cached", Date.now().toString());
+            cache.put(
+              req,
+              new Response(clone.body, {
+                status: clone.status,
+                statusText: clone.statusText,
+                headers: h,
+              }),
+            );
           } catch (e) {}
         }
 
         // Download detection
-        const cd = resp.headers.get('content-disposition');
-        if (cd && cd.includes('attachment')) {
+        const cd = resp.headers.get("content-disposition");
+        if (cd && cd.includes("attachment")) {
           broadcast({
-            type: 'DOWNLOAD_DETECTED',
+            type: "DOWNLOAD_DETECTED",
             url: targetUrl,
             filename: parseFilename(cd, url.pathname),
             size: size,
-            mime: resp.headers.get('content-type') || 'application/octet-stream',
+            mime:
+              resp.headers.get("content-type") || "application/octet-stream",
           });
         }
 
         logRequest({
-          url: url.toString(), method: req.method, status: resp.status,
-          type: resp.headers.get('content-type') || 'unknown',
-          size, duration, strategy, fromCache: false,
+          url: url.toString(),
+          method: req.method,
+          status: resp.status,
+          type: resp.headers.get("content-type") || "unknown",
+          size,
+          duration,
+          strategy,
+          fromCache: false,
         });
 
         return resp;
@@ -544,22 +682,24 @@ async function handleProxy(req, url) {
   // All failed
   const duration = Math.round(performance.now() - startTime);
   logRequest({
-    url: url.toString(), method: req.method, status: 0,
-    type: 'error', size: 0, duration,
-    strategy: 'all-failed', error: lastError ? lastError.message : 'Unknown',
+    url: url.toString(),
+    method: req.method,
+    status: 0,
+    type: "error",
+    size: 0,
+    duration,
+    strategy: "all-failed",
+    error: lastError ? lastError.message : "Unknown",
   });
 
-  return errorResponse(
-    buildErrorHtml(strategies, targetUrl, lastError),
-    503
-  );
+  return errorResponse(buildErrorHtml(strategies, targetUrl, lastError), 503);
 }
 
 function parseFilename(cd, fallback) {
   const m = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-  if (m) return m[1].replace(/['"]/g, '');
-  const parts = fallback.split('/');
-  return parts[parts.length - 1] || 'download';
+  if (m) return m[1].replace(/['"]/g, "");
+  const parts = fallback.split("/");
+  return parts[parts.length - 1] || "download";
 }
 
 // ════════════════════════════════════════════════════════
@@ -567,9 +707,12 @@ function parseFilename(cd, fallback) {
 // ════════════════════════════════════════════════════════
 function storeCookie(targetUrl, setCookieHeader) {
   // Delegate to NeptuneCookies if injected
-  var mod = _useModule('NeptuneCookies');
+  var mod = _useModule("NeptuneCookies");
   if (mod) {
-    try { mod.storeCookie(targetUrl, setCookieHeader); return; } catch(e) {}
+    try {
+      mod.storeCookie(targetUrl, setCookieHeader);
+      return;
+    } catch (e) {}
   }
   // Fallback inline implementation
   try {
@@ -586,17 +729,19 @@ function storeCookie(targetUrl, setCookieHeader) {
       let expires = null;
       for (const attr of ck.attrs) {
         const low = attr.toLowerCase().trim();
-        if (low.startsWith('expires=')) {
-          try { expires = new Date(attr.slice(8)).getTime(); } catch(e) {}
-        } else if (low.startsWith('max-age=')) {
+        if (low.startsWith("expires=")) {
+          try {
+            expires = new Date(attr.slice(8)).getTime();
+          } catch (e) {}
+        } else if (low.startsWith("max-age=")) {
           const sec = parseInt(attr.slice(8));
           if (!isNaN(sec)) expires = Date.now() + sec * 1000;
         }
       }
       jar.push({
         name: ck.name.trim(),
-        value: ck.value || '',
-        path: '',
+        value: ck.value || "",
+        path: "",
         expires,
       });
     }
@@ -607,22 +752,22 @@ function storeCookie(targetUrl, setCookieHeader) {
 // Splits on commas that are NOT inside a date value (which always follows "Expires=").
 function parseSetCookieHeader(header) {
   const cookies = [];
-  let current = '';
+  let current = "";
   let inExpiresDate = false;
   for (let i = 0; i < header.length; i++) {
     const ch = header[i];
     const rest = header.slice(i);
-    if (!inExpiresDate && rest.toLowerCase().startsWith('expires=')) {
+    if (!inExpiresDate && rest.toLowerCase().startsWith("expires=")) {
       inExpiresDate = true;
     }
-    if (ch === ',' && !inExpiresDate) {
+    if (ch === "," && !inExpiresDate) {
       // Commit current cookie
       const parsed = parseSingleCookie(current);
       if (parsed) cookies.push(parsed);
-      current = '';
+      current = "";
       continue;
     }
-    if (inExpiresDate && (ch === ';' || i === header.length - 1)) {
+    if (inExpiresDate && (ch === ";" || i === header.length - 1)) {
       inExpiresDate = false;
     }
     current += ch;
@@ -637,10 +782,13 @@ function parseSetCookieHeader(header) {
 function parseSingleCookie(str) {
   str = str.trim();
   if (!str) return null;
-  const parts = str.split(';').map(s => s.trim()).filter(Boolean);
+  const parts = str
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (!parts.length) return null;
   const nv = parts[0];
-  const eq = nv.indexOf('=');
+  const eq = nv.indexOf("=");
   if (eq < 0) return null;
   const name = nv.slice(0, eq).trim();
   const value = nv.slice(eq + 1).trim();
@@ -652,15 +800,17 @@ function parseSingleCookie(str) {
 // ════════════════════════════════════════════════════════
 function logRequest(entry) {
   // Delegate to NeptuneLogger if injected
-  var mod = _useModule('NeptuneLogger');
+  var mod = _useModule("NeptuneLogger");
   if (mod) {
-    try { mod.log(entry); } catch(e) {}
+    try {
+      mod.log(entry);
+    } catch (e) {}
   }
   // Always keep local log for compatibility
   entry.timestamp = Date.now();
   requestLog.unshift(entry);
   if (requestLog.length > MAX_LOG) requestLog.pop();
-  broadcast({ type: 'REQUEST_LOG_ENTRY', entry });
+  broadcast({ type: "REQUEST_LOG_ENTRY", entry });
 }
 
 // ════════════════════════════════════════════════════════
@@ -668,10 +818,14 @@ function logRequest(entry) {
 // ════════════════════════════════════════════════════════
 async function tryStrategy(strategy, targetUrl, req, reqHeaders, isDocument) {
   switch (strategy) {
-    case 'cors':  return await corsFetch(targetUrl, req, reqHeaders, isDocument);
-    case 'iframe':return await iframeDirectFetch(targetUrl);
-    case 'opaque':return await opaqueFetch(targetUrl, req, reqHeaders);
-    default:      return null;
+    case "cors":
+      return await corsFetch(targetUrl, req, reqHeaders, isDocument);
+    case "iframe":
+      return await iframeDirectFetch(targetUrl);
+    case "opaque":
+      return await opaqueFetch(targetUrl, req, reqHeaders);
+    default:
+      return null;
   }
 }
 
@@ -685,35 +839,46 @@ async function corsFetch(targetUrl, req, reqHeaders, isDocument) {
   // network layer for rendering, just not for JS access).
   const init = {
     method: req.method,
-    redirect: 'follow',
-    cache: 'no-store',
+    redirect: "follow",
+    cache: "no-store",
     headers: reqHeaders,
   };
 
   // Forward body for non-GET/HEAD
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
+  if (req.method !== "GET" && req.method !== "HEAD") {
     init.body = await req.arrayBuffer();
   }
 
   // Phase 6: Light timing jitter for CORS direct fetch (0–50ms)
-  await new Promise(r => setTimeout(r, Math.floor(Math.pow(Math.random(), 2) * 50)));
+  await new Promise((r) =>
+    setTimeout(r, Math.floor(Math.pow(Math.random(), 2) * 50)),
+  );
 
   const resp = await fetch(targetUrl, init);
 
   // Network errors (type 'error') or failed requests (status 0) — fall back.
   // Opaque responses (status 0, type 'opaque') are valid — the browser
   // rendering engine can still use them for images, scripts, and styles.
-  if (!resp || resp.type === 'error' || (resp.status === 0 && resp.type !== 'opaque')) {
+  if (
+    !resp ||
+    resp.type === "error" ||
+    (resp.status === 0 && resp.type !== "opaque")
+  ) {
     return null;
   }
 
-  const ct = (resp.headers.get('content-type') || '').toLowerCase();
+  const ct = (resp.headers.get("content-type") || "").toLowerCase();
 
   // HTML → full rewrite if body is readable
-  if (ct.includes('text/html') && resp.type !== 'opaque') {
+  if (ct.includes("text/html") && resp.type !== "opaque") {
     try {
       const html = await resp.text();
-      const transformed = transformHTML(html, targetUrl, self.location.origin, swConfig);
+      const transformed = transformHTML(
+        html,
+        targetUrl,
+        self.location.origin,
+        swConfig,
+      );
       return new Response(transformed, {
         status: resp.status,
         statusText: resp.statusText,
@@ -727,7 +892,7 @@ async function corsFetch(targetUrl, req, reqHeaders, isDocument) {
   // Opaque HTML can't be read — fall through to iframe visual proxy.
   // We check both Content-Type AND the request destination because some
   // browsers may filter Content-Type on opaque responses.
-  if (resp.type === 'opaque' && (ct.includes('text/html') || isDocument)) {
+  if (resp.type === "opaque" && (ct.includes("text/html") || isDocument)) {
     return null;
   }
 
@@ -741,22 +906,24 @@ async function opaqueFetch(targetUrl, req, reqHeaders) {
   try {
     const init = {
       method: req.method,
-      mode: 'no-cors',
-      redirect: 'follow',
-      cache: 'no-store',
+      mode: "no-cors",
+      redirect: "follow",
+      cache: "no-store",
       headers: reqHeaders,
     };
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
+    if (req.method !== "GET" && req.method !== "HEAD") {
       init.body = await req.arrayBuffer();
     }
 
     // Phase 6: Light timing jitter for opaque fallback traffic (0–100ms)
-    await new Promise(r => setTimeout(r, Math.floor(Math.pow(Math.random(), 2) * 100)));
+    await new Promise((r) =>
+      setTimeout(r, Math.floor(Math.pow(Math.random(), 2) * 100)),
+    );
 
     const resp = await fetch(targetUrl, init);
     return resp;
   } catch (e) {
-    console.log('[SW] Opaque fetch failed:', e.message);
+    console.log("[SW] Opaque fetch failed:", e.message);
     return null;
   }
 }
@@ -765,7 +932,7 @@ async function iframeDirectFetch(targetUrl) {
   const html = buildIframeWrapper(targetUrl);
   return new Response(html, {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
 
@@ -879,16 +1046,24 @@ iframe{width:100%;height:100%;border:none;background:#fff}
  * dark mode, bridge, and runtime into already-rewritten HTML.
  * Used after NeptuneRewriter handles URL rewriting.
  */
-function _injectPageScripts(html, targetUrl, origin, cfg, targetOrigin, proxyRoot) {
+function _injectPageScripts(
+  html,
+  targetUrl,
+  origin,
+  cfg,
+  targetOrigin,
+  proxyRoot,
+) {
   var out = html;
 
   // Inject fingerprint randomization engine (before any page scripts)
   if (cfg.fingerprintCode && cfg.fingerprintCode.length > 0) {
-    var fpScript = '<script id="__nptn_fingerprint">' + cfg.fingerprintCode + '</script>';
-    if (out.indexOf('<head>') !== -1) {
-      out = out.replace('<head>', '<head>' + fpScript);
-    } else if (out.indexOf('<html>') !== -1) {
-      out = out.replace('<html>', '<html><head>' + fpScript + '</head>');
+    var fpScript =
+      '<script id="__nptn_fingerprint">' + cfg.fingerprintCode + "</script>";
+    if (out.indexOf("<head>") !== -1) {
+      out = out.replace("<head>", "<head>" + fpScript);
+    } else if (out.indexOf("<html>") !== -1) {
+      out = out.replace("<html>", "<html><head>" + fpScript + "</head>");
     } else {
       out = fpScript + out;
     }
@@ -896,58 +1071,79 @@ function _injectPageScripts(html, targetUrl, origin, cfg, targetOrigin, proxyRoo
 
   // Strip tracker scripts
   if (cfg.stripTrackers) {
-    out = out.replace(/<script[^>]*src=["']([^"']*(?:google-analytics|gtag|googletagmanager|doubleclick|facebook\.com\/tr|mixpanel|amplitude|segment|hotjar|clarity\.ms|tracker|pixel|beacon|telemetry)[^"']*)["'][^>]*><\/script>/gi, '<!-- neptune: tracker blocked -->');
-    out = out.replace(/<script[^>]*>\s*(?:[\s\S]*?(?:gtag\s*\(|ga\s*\(\s*['"]create['"]\s*,|GoogleAnalyticsObject|analytics\.load|mixpanel\.init|amplitude\.init|clarity\s*\(|hj\s*\())\s*[\s\S]*?<\/script>/gi, '<!-- neptune: inline tracker blocked -->');
-    out = out.replace(/<img[^>]*src=["']([^"']*(?:pixel|beacon|tracker|analytics)[^"']*)["'][^>]*\/?>/gi, '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" />');
-    out = out.replace(/<noscript>\s*<iframe[^>]*src=["']https?:\/\/www\.googletagmanager\.com[^"']*["'][^>]*><\/iframe>\s*<\/noscript>/gi, '<!-- neptune: GTM noscript blocked -->');
+    out = out.replace(
+      /<script[^>]*src=["']([^"']*(?:google-analytics|gtag|googletagmanager|doubleclick|facebook\.com\/tr|mixpanel|amplitude|segment|hotjar|clarity\.ms|tracker|pixel|beacon|telemetry)[^"']*)["'][^>]*><\/script>/gi,
+      "<!-- neptune: tracker blocked -->",
+    );
+    out = out.replace(
+      /<script[^>]*>\s*(?:[\s\S]*?(?:gtag\s*\(|ga\s*\(\s*['"]create['"]\s*,|GoogleAnalyticsObject|analytics\.load|mixpanel\.init|amplitude\.init|clarity\s*\(|hj\s*\())\s*[\s\S]*?<\/script>/gi,
+      "<!-- neptune: inline tracker blocked -->",
+    );
+    out = out.replace(
+      /<img[^>]*src=["']([^"']*(?:pixel|beacon|tracker|analytics)[^"']*)["'][^>]*\/?>/gi,
+      '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" />',
+    );
+    out = out.replace(
+      /<noscript>\s*<iframe[^>]*src=["']https?:\/\/www\.googletagmanager\.com[^"']*["'][^>]*><\/iframe>\s*<\/noscript>/gi,
+      "<!-- neptune: GTM noscript blocked -->",
+    );
   }
 
   // Dark mode injection
   if (cfg.darkMode) {
-    var darkCSS = '<style id="__nptn_dark">html,body{background:#0a0a0f!important;color:#ddd!important}body *{background-color:transparent!important;color:#ccc!important;border-color:#333!important}a{color:#00ff88!important}</style>';
-    if (out.indexOf('</head>') !== -1) {
-      out = out.replace('</head>', darkCSS + '</head>');
+    var darkCSS =
+      '<style id="__nptn_dark">html,body{background:#0a0a0f!important;color:#ddd!important}body *{background-color:transparent!important;color:#ccc!important;border-color:#333!important}a{color:#00ff88!important}</style>';
+    if (out.indexOf("</head>") !== -1) {
+      out = out.replace("</head>", darkCSS + "</head>");
     } else {
       out = darkCSS + out;
     }
   }
 
   // Bridge script for parent \u2194 iframe communication
-  var bridgeScript = cfg.injectBridge ?
-    '<script id="__nptn_bridge">(function(){"use strict";if(window.__nptn_bridge)return;window.__nptn_bridge=true;' +
-    'var parentOrigin="' + origin + '";' +
-    'window.addEventListener("message",function(e){if(!e.data||!e.data.__nptn)return;' +
-    'if(e.source!==window.parent)return;var d=e.data;' +
-    'if(d.type==="eval"){try{var r=eval(d.code);e.source.postMessage({__nptn:true,type:"eval_result",id:d.id,result:String(r),error:null},"*");}catch(ex){e.source.postMessage({__nptn:true,type:"eval_result",id:d.id,result:null,error:ex.message},"*");}}' +
-    'if(d.type==="get_title"){e.source.postMessage({__nptn:true,type:"title",title:document.title},"*");}' +
-    'if(d.type==="get_html"){e.source.postMessage({__nptn:true,type:"html",html:document.documentElement.outerHTML},"*");}' +
-    'if(d.type==="get_text"){e.source.postMessage({__nptn:true,type:"text",text:document.body.innerText},"*");}' +
-    'if(d.type==="scroll_to"){window.scrollTo(d.x||0,d.y||0);}' +
-    'if(d.type==="click"){var el=document.elementFromPoint(d.x,d.y);if(el)el.click();}' +
-    'if(d.type==="css"){var s=document.getElementById("__nptn_user_css");if(!s){s=document.createElement("style");s.id="__nptn_user_css";document.head.appendChild(s);}s.textContent=d.css;}' +
-    '});' +
-    'var op=history.pushState,or=history.replaceState;' +
-    'history.pushState=function(){op.apply(this,arguments);window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");};' +
-    'history.replaceState=function(){or.apply(this,arguments);window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");};' +
-    'window.addEventListener("popstate",function(){window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");});' +
-    'window.addEventListener("DOMContentLoaded",function(){window.parent.postMessage({__nptn:true,type:"ready",title:document.title,url:location.href},"*");});' +
-    '})();</script>' : '';
+  var bridgeScript = cfg.injectBridge
+    ? '<script id="__nptn_bridge">(function(){"use strict";if(window.__nptn_bridge)return;window.__nptn_bridge=true;' +
+      'var parentOrigin="' +
+      origin +
+      '";' +
+      'window.addEventListener("message",function(e){if(!e.data||!e.data.__nptn)return;' +
+      "if(e.source!==window.parent)return;var d=e.data;" +
+      'if(d.type==="eval"){try{var r=eval(d.code);e.source.postMessage({__nptn:true,type:"eval_result",id:d.id,result:String(r),error:null},"*");}catch(ex){e.source.postMessage({__nptn:true,type:"eval_result",id:d.id,result:null,error:ex.message},"*");}}' +
+      'if(d.type==="get_title"){e.source.postMessage({__nptn:true,type:"title",title:document.title},"*");}' +
+      'if(d.type==="get_html"){e.source.postMessage({__nptn:true,type:"html",html:document.documentElement.outerHTML},"*");}' +
+      'if(d.type==="get_text"){e.source.postMessage({__nptn:true,type:"text",text:document.body.innerText},"*");}' +
+      'if(d.type==="scroll_to"){window.scrollTo(d.x||0,d.y||0);}' +
+      'if(d.type==="click"){var el=document.elementFromPoint(d.x,d.y);if(el)el.click();}' +
+      'if(d.type==="css"){var s=document.getElementById("__nptn_user_css");if(!s){s=document.createElement("style");s.id="__nptn_user_css";document.head.appendChild(s);}s.textContent=d.css;}' +
+      "});" +
+      "var op=history.pushState,or=history.replaceState;" +
+      'history.pushState=function(){op.apply(this,arguments);window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");};' +
+      'history.replaceState=function(){or.apply(this,arguments);window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");};' +
+      'window.addEventListener("popstate",function(){window.parent.postMessage({__nptn:true,type:"nav",url:location.href},"*");});' +
+      'window.addEventListener("DOMContentLoaded",function(){window.parent.postMessage({__nptn:true,type:"ready",title:document.title,url:location.href},"*");});' +
+      "})();</script>"
+    : "";
 
   // Runtime for intercepting fetch/XHR/clicks/forms
-  var runtime = '<script id="__nptn_runtime">(function(){"use strict";if(window.__nptn_injected)return;window.__nptn_injected=true;' +
-    'var base="' + targetOrigin + '",proxy="' + proxyRoot + '";' +
+  var runtime =
+    '<script id="__nptn_runtime">(function(){"use strict";if(window.__nptn_injected)return;window.__nptn_injected=true;' +
+    'var base="' +
+    targetOrigin +
+    '",proxy="' +
+    proxyRoot +
+    '";' +
     'function p(u){if(!u||u.startsWith("data:")||u.startsWith("blob:"))return u;' +
     'if((u.startsWith("http://")||u.startsWith("https://"))&&!u.startsWith(location.origin))return proxy+encodeURIComponent(u);' +
     'if(u.startsWith("//"))return proxy+encodeURIComponent("https:"+u);' +
     'if(u.startsWith("/")&&!u.startsWith("/proxy"))return proxy+encodeURIComponent(base+u);return u;}' +
-    'var of=window.fetch;' +
+    "var of=window.fetch;" +
     'window.fetch=function(i,init){if(typeof i==="string"){var u=i;' +
     'if(u&&u.startsWith("http")&&!u.startsWith(location.origin))u=p(u);' +
     'else if(u&&u.startsWith("/")&&!u.startsWith("/proxy"))u=p(u);return of(u,init);}' +
-    'if(i&&i.url){var u=i.url;' +
+    "if(i&&i.url){var u=i.url;" +
     'if(u&&u.startsWith("http")&&!u.startsWith(location.origin))u=p(u);' +
     'else if(u&&u.startsWith("/")&&!u.startsWith("/proxy"))u=p(u);return of(new Request(u,i),init);}return of(i,init);};' +
-    'var ox=XMLHttpRequest.prototype.open;' +
+    "var ox=XMLHttpRequest.prototype.open;" +
     'XMLHttpRequest.prototype.open=function(m,u,a,uu,pp){if(u&&u.startsWith("http")&&!u.startsWith(location.origin)){u=p(u);}' +
     'else if(u&&u.startsWith("/")&&!u.startsWith("/proxy")){u=p(u);}return ox.call(this,m,u,a,uu,pp);};' +
     'document.addEventListener("click",function(e){var a=e.target.closest("a");if(!a)return;var h=a.getAttribute("href");' +
@@ -956,55 +1152,55 @@ function _injectPageScripts(html, targetUrl, origin, cfg, targetOrigin, proxyRoo
     'document.addEventListener("submit",function(e){var f=e.target;if(f.tagName!=="FORM")return;var a=f.getAttribute("action");' +
     'if(a&&a.startsWith("http")&&!a.startsWith(location.origin)){f.setAttribute("action",p(a));}' +
     'else if(a&&a.startsWith("/")&&!a.startsWith("/proxy")){f.setAttribute("action",p(a));}},true);' +
-    'var op=history.pushState,or2=history.replaceState;' +
+    "var op=history.pushState,or2=history.replaceState;" +
     'function patchHistory(orig){return function(){var args=Array.from(arguments);if(args.length>=3&&typeof args[2]==="string"){args[2]=p(args[2]);}return orig.apply(this,args);};}' +
-    'history.pushState=patchHistory(op);history.replaceState=patchHistory(or2);' +
+    "history.pushState=patchHistory(op);history.replaceState=patchHistory(or2);" +
     'window.addEventListener("popstate",function(){if(window.__nptn_navigate)window.__nptn_navigate(location.href);});' +
     // WebSocket proxy relay through SW (monkeypatch)
-    'var _nws=window.WebSocket;window.WebSocket=function(u,ps){' +
+    "var _nws=window.WebSocket;window.WebSocket=function(u,ps){" +
     'if(!u||!(u.startsWith("wss://")||u.startsWith("ws://")))return new _nws(u,ps);' +
-    'var s=this;s.url=u;s.readyState=0;s.CONNECTING=0;s.OPEN=1;s.CLOSING=2;s.CLOSED=3;' +
+    "var s=this;s.url=u;s.readyState=0;s.CONNECTING=0;s.OPEN=1;s.CLOSING=2;s.CLOSED=3;" +
     's.binaryType="blob";s.bufferedAmount=0;s.extensions="";s.protocol="";' +
-    's._wsId=null;s._q=[];' +
-    'var sw=navigator.serviceWorker.controller;' +
-    'if(!sw){setTimeout(function(){s.readyState=3;if(s.onclose)s.onclose({code:1006});},0);return;}' +
+    "s._wsId=null;s._q=[];" +
+    "var sw=navigator.serviceWorker.controller;" +
+    "if(!sw){setTimeout(function(){s.readyState=3;if(s.onclose)s.onclose({code:1006});},0);return;}" +
     'sw.postMessage({type:"WS_CONNECT",url:u,protocols:ps});' +
-    'var h=function(e){var d=e.data;if(!d||!d.type)return;' +
+    "var h=function(e){var d=e.data;if(!d||!d.type)return;" +
     'if(d.type==="WS_CONNECTING"){s._wsId=d.wsId;}' +
     'else if(d.type==="WS_OPENED"&&d.wsId===s._wsId){s.readyState=1;if(s.onopen)s.onopen({target:s});' +
     'var mq=s._q;s._q=[];for(var i=0;i<mq.length;i++)sw.postMessage({type:"WS_SEND",wsId:s._wsId,data:mq[i]});}' +
     'else if(d.type==="WS_MESSAGE"&&d.wsId===s._wsId){s.readyState=1;' +
     'var ev={target:s,data:d.data,origin:u,lastEventId:""};' +
     'if(typeof d.data==="string")ev.data=d.data;else if(Array.isArray(d.data)){' +
-    'var bytes=new Uint8Array(d.data);' +
+    "var bytes=new Uint8Array(d.data);" +
     'if(s.binaryType==="arraybuffer")ev.data=bytes.buffer;else ev.data=new Blob([bytes]);}' +
-    'if(s.onmessage)s.onmessage(ev);}' +
+    "if(s.onmessage)s.onmessage(ev);}" +
     'else if(d.type==="WS_CLOSED"&&d.wsId===s._wsId){s.readyState=3;' +
     'navigator.serviceWorker.removeEventListener("message",h);' +
-    'if(s.onclose)s.onclose({target:s,code:d.code,reason:d.reason,wasClean:d.wasClean});}' +
+    "if(s.onclose)s.onclose({target:s,code:d.code,reason:d.reason,wasClean:d.wasClean});}" +
     'else if(d.type==="WS_ERROR"&&d.wsId===s._wsId){if(s.onerror)s.onerror({target:s});}' +
-    '};' +
+    "};" +
     'navigator.serviceWorker.addEventListener("message",h);' +
-    's.send=function(data){' +
-    'if(s.readyState===1&&s._wsId!=null){' +
-    'if(data instanceof ArrayBuffer)data=Array.from(new Uint8Array(data));' +
-    'else if(data instanceof Uint8Array)data=Array.from(data);' +
+    "s.send=function(data){" +
+    "if(s.readyState===1&&s._wsId!=null){" +
+    "if(data instanceof ArrayBuffer)data=Array.from(new Uint8Array(data));" +
+    "else if(data instanceof Uint8Array)data=Array.from(data);" +
     'sw.postMessage({type:"WS_SEND",wsId:s._wsId,data:data});' +
-    '}else if(s.readyState<=1){s._q.push(data);}};' +
-    's.close=function(c,r){if(s.readyState===3)return;s.readyState=2;' +
+    "}else if(s.readyState<=1){s._q.push(data);}};" +
+    "s.close=function(c,r){if(s.readyState===3)return;s.readyState=2;" +
     'if(s._wsId!=null)sw.postMessage({type:"WS_CLOSE",wsId:s._wsId,code:c,reason:r});s.readyState=3;};' +
     's.addEventListener=function(t,fn){if(t==="open")s.onopen=fn;else if(t==="message")s.onmessage=fn;' +
     'else if(t==="close")s.onclose=fn;else if(t==="error")s.onerror=fn;};' +
-    '};' +
-    'window.WebSocket.prototype=_nws.prototype;' +
-    'window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;' +
-    '})();</script>';
+    "};" +
+    "window.WebSocket.prototype=_nws.prototype;" +
+    "window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;" +
+    "})();</script>";
 
   // Inject scripts
-  if (out.indexOf('</head>') !== -1) {
-    out = out.replace('</head>', bridgeScript + runtime + '</head>');
-  } else if (out.indexOf('<body') !== -1) {
-    out = out.replace('<body', bridgeScript + runtime + '<body');
+  if (out.indexOf("</head>") !== -1) {
+    out = out.replace("</head>", bridgeScript + runtime + "</head>");
+  } else if (out.indexOf("<body") !== -1) {
+    out = out.replace("<body", bridgeScript + runtime + "<body");
   } else {
     out = bridgeScript + runtime + out;
   }
@@ -1014,8 +1210,12 @@ function _injectPageScripts(html, targetUrl, origin, cfg, targetOrigin, proxyRoo
 
 function transformHTML(html, targetUrl, origin, cfg) {
   // Delegate to NeptuneRewriter if injected
-  var rwMod = _useModule('NeptuneRewriter');
-  try { var t = new URL(targetUrl); } catch(e) { return html; }
+  var rwMod = _useModule("NeptuneRewriter");
+  try {
+    var t = new URL(targetUrl);
+  } catch (e) {
+    return html;
+  }
   var targetOrigin = t.origin;
   var proxyRoot = PROXY_ROOT;
 
@@ -1023,19 +1223,34 @@ function transformHTML(html, targetUrl, origin, cfg) {
     try {
       var rewritten = rwMod.rewriteHTML(html, targetOrigin, proxyRoot);
       // Inject fingerprint, bridge, runtime (NeptuneRewriter doesn't do these)
-      rewritten = _injectPageScripts(rewritten, targetUrl, origin, cfg, targetOrigin, proxyRoot);
+      rewritten = _injectPageScripts(
+        rewritten,
+        targetUrl,
+        origin,
+        cfg,
+        targetOrigin,
+        proxyRoot,
+      );
       return rewritten;
-    } catch(e) {}
+    } catch (e) {}
   }
   // Fallback inline implementation
   const toProxy = (u) => {
-    if (!u || u.startsWith('data:') || u.startsWith('blob:')) return u;
+    if (!u || u.startsWith("data:") || u.startsWith("blob:")) return u;
     // Already rewritten — don't double-wrap
     if (u.startsWith(proxyRoot)) return u;
-    if (u.startsWith('http://') || u.startsWith('https://')) return proxyRoot + encodeURIComponent(u);
-    if (u.startsWith('//')) return proxyRoot + encodeURIComponent('https:' + u);
-    if (u.startsWith('/')) return proxyRoot + encodeURIComponent(targetOrigin + u);
-    if (u.startsWith('#') || u.startsWith('javascript:') || u.startsWith('mailto:') || u.startsWith('tel:')) return u;
+    if (u.startsWith("http://") || u.startsWith("https://"))
+      return proxyRoot + encodeURIComponent(u);
+    if (u.startsWith("//")) return proxyRoot + encodeURIComponent("https:" + u);
+    if (u.startsWith("/"))
+      return proxyRoot + encodeURIComponent(targetOrigin + u);
+    if (
+      u.startsWith("#") ||
+      u.startsWith("javascript:") ||
+      u.startsWith("mailto:") ||
+      u.startsWith("tel:")
+    )
+      return u;
     return proxyRoot + encodeURIComponent(resolveURL(u, targetUrl));
   };
 
@@ -1043,11 +1258,12 @@ function transformHTML(html, targetUrl, origin, cfg) {
 
   // Inject fingerprint randomization engine (before any page scripts)
   if (cfg.fingerprintCode && cfg.fingerprintCode.length > 0) {
-    const fpScript = '<script id="__nptn_fingerprint">' + cfg.fingerprintCode + '</script>';
-    if (out.includes('<head>')) {
-      out = out.replace('<head>', '<head>' + fpScript);
-    } else if (out.includes('<html>')) {
-      out = out.replace('<html>', '<html><head>' + fpScript + '</head>');
+    const fpScript =
+      '<script id="__nptn_fingerprint">' + cfg.fingerprintCode + "</script>";
+    if (out.includes("<head>")) {
+      out = out.replace("<head>", "<head>" + fpScript);
+    } else if (out.includes("<html>")) {
+      out = out.replace("<html>", "<html><head>" + fpScript + "</head>");
     } else {
       out = fpScript + out;
     }
@@ -1056,13 +1272,25 @@ function transformHTML(html, targetUrl, origin, cfg) {
   // Strip tracker scripts
   if (cfg.stripTrackers) {
     // External tracker scripts by src URL pattern
-    out = out.replace(/<script[^>]*src=["']([^"']*(?:google-analytics|gtag|googletagmanager|doubleclick|facebook\.com\/tr|mixpanel|amplitude|segment|hotjar|clarity\.ms|tracker|pixel|beacon|telemetry)[^"']*)["'][^>]*><\/script>/gi, '<!-- neptune: tracker blocked -->');
+    out = out.replace(
+      /<script[^>]*src=["']([^"']*(?:google-analytics|gtag|googletagmanager|doubleclick|facebook\.com\/tr|mixpanel|amplitude|segment|hotjar|clarity\.ms|tracker|pixel|beacon|telemetry)[^"']*)["'][^>]*><\/script>/gi,
+      "<!-- neptune: tracker blocked -->",
+    );
     // Inline tracker scripts — only strip if they contain analytics initialization code
-    out = out.replace(/<script[^>]*>\s*(?:[\s\S]*?(?:gtag\s*\(|ga\s*\(\s*['"]create['"]\s*,|GoogleAnalyticsObject|analytics\.load|mixpanel\.init|amplitude\.init|clarity\s*\(|hj\s*\())\s*[\s\S]*?<\/script>/gi, '<!-- neptune: inline tracker blocked -->');
+    out = out.replace(
+      /<script[^>]*>\s*(?:[\s\S]*?(?:gtag\s*\(|ga\s*\(\s*['"]create['"]\s*,|GoogleAnalyticsObject|analytics\.load|mixpanel\.init|amplitude\.init|clarity\s*\(|hj\s*\())\s*[\s\S]*?<\/script>/gi,
+      "<!-- neptune: inline tracker blocked -->",
+    );
     // Tracking pixels / beacons
-    out = out.replace(/<img[^>]*src=["']([^"']*(?:pixel|beacon|tracker|analytics)[^"']*)["'][^>]*\/?>/gi, '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" />');
+    out = out.replace(
+      /<img[^>]*src=["']([^"']*(?:pixel|beacon|tracker|analytics)[^"']*)["'][^>]*\/?>/gi,
+      '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" />',
+    );
     // Google Tag Manager noscript iframe
-    out = out.replace(/<noscript>\s*<iframe[^>]*src=["']https?:\/\/www\.googletagmanager\.com[^"']*["'][^>]*><\/iframe>\s*<\/noscript>/gi, '<!-- neptune: GTM noscript blocked -->');
+    out = out.replace(
+      /<noscript>\s*<iframe[^>]*src=["']https?:\/\/www\.googletagmanager\.com[^"']*["'][^>]*><\/iframe>\s*<\/noscript>/gi,
+      "<!-- neptune: GTM noscript blocked -->",
+    );
   }
 
   // Rewrite URLs
@@ -1072,43 +1300,59 @@ function transformHTML(html, targetUrl, origin, cfg) {
   out = out.replace(/src='([^']*)'/gi, (m, u) => `src="${toProxy(u)}"`);
   out = out.replace(/action="([^"]*)"/gi, (m, u) => `action="${toProxy(u)}"`);
   out = out.replace(/action='([^']*)'/gi, (m, u) => `action="${toProxy(u)}"`);
-  out = out.replace(/url\((['"]?)([^'"\)]+)\1\)/gi, (m, q, u) => `url("${toProxy(u)}")`);
+  out = out.replace(
+    /url\((['"]?)([^'"\)]+)\1\)/gi,
+    (m, q, u) => `url("${toProxy(u)}")`,
+  );
 
   // Rewrite srcset (responsive images)
   out = out.replace(/srcset="([^"]*)"/gi, (m, srcset) => {
-    const rewritten = srcset.split(',').map(part => {
-      const [url, ...desc] = part.trim().split(/\s+/);
-      if (!url) return part;
-      return toProxy(url.trim()) + ' ' + desc.join(' ');
-    }).join(', ');
+    const rewritten = srcset
+      .split(",")
+      .map((part) => {
+        const [url, ...desc] = part.trim().split(/\s+/);
+        if (!url) return part;
+        return toProxy(url.trim()) + " " + desc.join(" ");
+      })
+      .join(", ");
     return `srcset="${rewritten}"`;
   });
 
   // Meta refresh
-  out = out.replace(/content="\s*\d+\s*;\s*url=([^"]*)"/gi, (m, u) => `content="0; url=${toProxy(u)}"`);
+  out = out.replace(
+    /content="\s*\d+\s*;\s*url=([^"]*)"/gi,
+    (m, u) => `content="0; url=${toProxy(u)}"`,
+  );
 
   // Strip security headers that break proxy
-  out = out.replace(/<meta[^>]*http-equiv="Content-Security-Policy"[^>]*>/gi, '<!-- CSP stripped by Neptune -->');
-  out = out.replace(/<meta[^>]*http-equiv="X-Frame-Options"[^>]*>/gi, '<!-- XFO stripped by Neptune -->');
+  out = out.replace(
+    /<meta[^>]*http-equiv="Content-Security-Policy"[^>]*>/gi,
+    "<!-- CSP stripped by Neptune -->",
+  );
+  out = out.replace(
+    /<meta[^>]*http-equiv="X-Frame-Options"[^>]*>/gi,
+    "<!-- XFO stripped by Neptune -->",
+  );
 
   // Lazy-load images
   out = out.replace(/<img([^>]*)>/gi, (m, attrs) => {
-    if (attrs.includes('loading=')) return m;
+    if (attrs.includes("loading=")) return m;
     return `<img${attrs} loading="lazy">`;
   });
 
   // Dark mode injection
   if (cfg.darkMode) {
     const darkCSS = `<style id="__nptn_dark">html,body{background:#0a0a0f!important;color:#ddd!important}body *{background-color:transparent!important;color:#ccc!important;border-color:#333!important}a{color:#00ff88!important}</style>`;
-    if (out.includes('</head>')) {
-      out = out.replace('</head>', darkCSS + '</head>');
+    if (out.includes("</head>")) {
+      out = out.replace("</head>", darkCSS + "</head>");
     } else {
       out = darkCSS + out;
     }
   }
 
   // Bridge script for parent ↔ iframe communication in CORS mode
-  const bridgeScript = cfg.injectBridge ? `
+  const bridgeScript = cfg.injectBridge
+    ? `
 <script id="__nptn_bridge">
 (function(){
   'use strict';
@@ -1134,7 +1378,8 @@ function transformHTML(html, targetUrl, origin, cfg) {
   window.addEventListener('popstate',function(){window.parent.postMessage({__nptn:true,type:'nav',url:location.href},'*');});
   window.addEventListener('DOMContentLoaded',function(){window.parent.postMessage({__nptn:true,type:'ready',title:document.title,url:location.href},'*');});
 })();
-</script>` : '';
+</script>`
+    : "";
 
   // Runtime for intercepting fetch/XHR/clicks/forms
   const runtime = `<script id="__nptn_runtime">
@@ -1214,10 +1459,10 @@ function transformHTML(html, targetUrl, origin, cfg) {
 </script>`;
 
   // Inject scripts
-  if (out.includes('</head>')) {
-    out = out.replace('</head>', bridgeScript + runtime + '</head>');
-  } else if (out.includes('<body')) {
-    out = out.replace('<body', bridgeScript + runtime + '<body');
+  if (out.includes("</head>")) {
+    out = out.replace("</head>", bridgeScript + runtime + "</head>");
+  } else if (out.includes("<body")) {
+    out = out.replace("<body", bridgeScript + runtime + "<body");
   } else {
     out = bridgeScript + runtime + out;
   }
@@ -1226,18 +1471,25 @@ function transformHTML(html, targetUrl, origin, cfg) {
 }
 
 function trackerBlockResponse(destination) {
-  const isImg = destination === 'image';
+  const isImg = destination === "image";
   if (isImg) {
     // 1x1 transparent GIF
-    const gif = Uint8Array.from(atob('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), c => c.charCodeAt(0));
+    const gif = Uint8Array.from(
+      atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
+      (c) => c.charCodeAt(0),
+    );
     return new Response(gif.buffer, {
       status: 200,
-      headers: { 'Content-Type': 'image/gif', 'Content-Length': '43', 'X-Neptune-Blocked': 'tracker' },
+      headers: {
+        "Content-Type": "image/gif",
+        "Content-Length": "43",
+        "X-Neptune-Blocked": "tracker",
+      },
     });
   }
-  return new Response('', {
+  return new Response("", {
     status: 200,
-    headers: { 'Content-Type': 'text/plain', 'X-Neptune-Blocked': 'tracker' },
+    headers: { "Content-Type": "text/plain", "X-Neptune-Blocked": "tracker" },
   });
 }
 
@@ -1245,25 +1497,38 @@ function trackerBlockResponse(destination) {
 // Utilities
 // ════════════════════════════════════════════════════════
 function resolveURL(rel, base) {
-  try { return new URL(rel, base).toString(); }
-  catch(e) { return base + (base.endsWith('/') ? '' : '/') + rel; }
+  try {
+    return new URL(rel, base).toString();
+  } catch (e) {
+    return base + (base.endsWith("/") ? "" : "/") + rel;
+  }
 }
 
 function sanitizeHeaders(headers) {
   // Delegate to NeptuneSecurity if injected
-  var mod = _useModule('NeptuneSecurity');
+  var mod = _useModule("NeptuneSecurity");
   if (mod) {
-    try { return mod.sanitizeResponseHeaders(headers); } catch(e) {}
+    try {
+      return mod.sanitizeResponseHeaders(headers);
+    } catch (e) {}
   }
   // Fallback inline implementation
   const safe = new Headers();
   const drop = [
-    'set-cookie','content-security-policy','content-security-policy-report-only',
-    'x-frame-options','strict-transport-security','permissions-policy',
-    'cross-origin-embedder-policy','cross-origin-opener-policy','cross-origin-resource-policy',
-    'x-content-type-options', // can cause issues with proxied content
+    "set-cookie",
+    "content-security-policy",
+    "content-security-policy-report-only",
+    "x-frame-options",
+    "strict-transport-security",
+    "permissions-policy",
+    "cross-origin-embedder-policy",
+    "cross-origin-opener-policy",
+    "cross-origin-resource-policy",
+    "x-content-type-options", // can cause issues with proxied content
   ];
-  headers.forEach((v,k) => { if (!drop.includes(k.toLowerCase())) safe.set(k, v); });
+  headers.forEach((v, k) => {
+    if (!drop.includes(k.toLowerCase())) safe.set(k, v);
+  });
   return safe;
 }
 
@@ -1283,12 +1548,12 @@ function errorResponse(msg, status) {
      </style></head><body>
      <h1>Neptune Proxy Error ${status}</h1>
      <div class="box">${msg}</div>
-     <p class="ok" style="margin-top:20px">Strategy: ${activeStrategy || 'detecting...'}</p>
+     <p class="ok" style="margin-top:20px">Strategy: ${activeStrategy || "detecting..."}</p>
      <p>Requests: ${totalRequests} | Blocked: ${blockedCount} | Bandwidth: ${formatBytes(totalBytes)}</p>
      <p class="hint">v${SW_VERSION} — standalone SW proxy kernel</p>
      <button class="retry-btn" onclick="location.reload()">&#x21BB; Retry</button>
      </body></html>`,
-    { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    { status, headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
 }
 
@@ -1309,8 +1574,8 @@ a:hover{color:#00ff88;text-decoration:underline}
 </style></head><body>
 <h2>Neptune — Cannot load target</h2>
 <p><strong>Target:</strong> <code>${escapeHtml(targetUrl)}</code></p>
-<p><strong>Tried:</strong> ${strategies.join(', ')}</p>
-${lastError ? `<div class="box">${escapeHtml(lastError.message || lastError)}</div>` : ''}
+<p><strong>Tried:</strong> ${strategies.join(", ")}</p>
+${lastError ? `<div class="box">${escapeHtml(lastError.message || lastError)}</div>` : ""}
 <hr>
 <h3>Why this happens</h3>
 <p>This cartridge is fully standalone — no proxy servers, no extensions, no external URLs. The ServiceWorker kernel can fetch most sites, but some origins block all cross-origin access.</p>
@@ -1322,7 +1587,7 @@ ${lastError ? `<div class="box">${escapeHtml(lastError.message || lastError)}</d
 <li><strong>Subresource Passthrough:</strong> Images, scripts, and other resources are fetched and streamed back. Opaque responses work for most resource types.</li>
 <li><strong>iframe Fallback:</strong> Sites that can't be fetched directly load in a sandboxed iframe for visual browsing.</li>
 </ol>
-<p class="diag">Strategy: ${activeStrategy || 'detecting'} | Requests: ${totalRequests} | Blocked: ${blockedCount} | Version: ${SW_VERSION}</p>
+<p class="diag">Strategy: ${activeStrategy || "detecting"} | Requests: ${totalRequests} | Blocked: ${blockedCount} | Version: ${SW_VERSION}</p>
 <button class="retry-btn" onclick="location.reload()">↻ Retry Connection</button>
 </body></html>`;
 }
@@ -1342,19 +1607,29 @@ code{background:#1a1a2e;padding:2px 8px;border-radius:3px;color:#ffaa00;font-siz
 <p>URL matched blacklist rule or failed whitelist check.</p>
 <button class="retry-btn" onclick="history.back()">← Go Back</button>
 </body></html>`,
-    { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Neptune-Blocked': 'filter' } }
+    {
+      status: 403,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Neptune-Blocked": "filter",
+      },
+    },
   );
 }
 
 function formatBytes(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
-  if (b < 1024*1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB';
-  return (b/(1024*1024*1024)).toFixed(1) + ' GB';
+  if (b < 1024) return b + " B";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+  if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + " MB";
+  return (b / (1024 * 1024 * 1024)).toFixed(1) + " GB";
 }
 
 function escapeHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ════════════════════════════════════════════════════════
@@ -1378,49 +1653,54 @@ function handleWsConnect(d, src) {
     const ws = new WebSocket(url, protocols);
     state.ws = ws;
 
-    ws.binaryType = 'arraybuffer';
+    ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
       state.connecting = false;
-      if (src) src.postMessage({ type: 'WS_OPENED', wsId });
+      if (src) src.postMessage({ type: "WS_OPENED", wsId });
       // Flush queued messages
       const q = state.queue;
       state.queue = [];
       for (const data of q) {
-        try { ws.send(data); } catch (e) {}
+        try {
+          ws.send(data);
+        } catch (e) {}
       }
     };
 
     ws.onmessage = (e) => {
       if (src) {
-        const payload = e.data instanceof ArrayBuffer
-          ? Array.from(new Uint8Array(e.data))
-          : e.data;
-        src.postMessage({ type: 'WS_MESSAGE', wsId, data: payload });
+        const payload =
+          e.data instanceof ArrayBuffer
+            ? Array.from(new Uint8Array(e.data))
+            : e.data;
+        src.postMessage({ type: "WS_MESSAGE", wsId, data: payload });
       }
     };
 
     ws.onclose = (e) => {
-      if (src) src.postMessage({
-        type: 'WS_CLOSED',
-        wsId,
-        code: e.code,
-        reason: e.reason,
-        wasClean: e.wasClean,
-      });
+      if (src)
+        src.postMessage({
+          type: "WS_CLOSED",
+          wsId,
+          code: e.code,
+          reason: e.reason,
+          wasClean: e.wasClean,
+        });
       wsRelays.delete(wsId);
     };
 
     ws.onerror = (e) => {
-      if (src) src.postMessage({ type: 'WS_ERROR', wsId, error: 'WebSocket error' });
+      if (src)
+        src.postMessage({ type: "WS_ERROR", wsId, error: "WebSocket error" });
     };
   } catch (err) {
-    if (src) src.postMessage({ type: 'WS_ERROR', wsId, error: err.message });
+    if (src) src.postMessage({ type: "WS_ERROR", wsId, error: err.message });
     wsRelays.delete(wsId);
   }
 
   // Return wsId immediately so client knows the handle
-  if (src) src.postMessage({ type: 'WS_CONNECTING', wsId });
+  if (src) src.postMessage({ type: "WS_CONNECTING", wsId });
 }
 
 function handleWsSend(d, src) {
@@ -1434,7 +1714,9 @@ function handleWsSend(d, src) {
   if (state.connecting) {
     state.queue.push(payload);
   } else if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-    try { state.ws.send(payload); } catch (e) {}
+    try {
+      state.ws.send(payload);
+    } catch (e) {}
   }
 }
 
@@ -1443,8 +1725,14 @@ function handleWsClose(d, src) {
   if (wsId == null) return;
   const state = wsRelays.get(wsId);
   if (!state) return;
-  if (state.ws && (state.ws.readyState === WebSocket.OPEN || state.ws.readyState === WebSocket.CONNECTING)) {
-    try { state.ws.close(code || 1000, reason || ''); } catch (e) {}
+  if (
+    state.ws &&
+    (state.ws.readyState === WebSocket.OPEN ||
+      state.ws.readyState === WebSocket.CONNECTING)
+  ) {
+    try {
+      state.ws.close(code || 1000, reason || "");
+    } catch (e) {}
   }
   wsRelays.delete(wsId);
 }
@@ -1470,14 +1758,22 @@ async function handleNetAdaptConnect(d, src) {
     connected: true,
   });
 
-  console.log('[SW-NETADAPT] CONNECT local_port=' + localPort + ' → ' + targetHost + ':' + (targetPort || 80));
+  console.log(
+    "[SW-NETADAPT] CONNECT local_port=" +
+      localPort +
+      " → " +
+      targetHost +
+      ":" +
+      (targetPort || 80),
+  );
 
   // Acknowledge the connection back to the NetworkAdapter
   // (the adapter already sent SYN-ACK to smoltcp; this just confirms SW state)
-  if (src) src.postMessage({
-    type: 'NET_ADAPT_CONNECTED',
-    localPort,
-  });
+  if (src)
+    src.postMessage({
+      type: "NET_ADAPT_CONNECTED",
+      localPort,
+    });
 }
 
 async function handleNetAdaptData(d, src) {
@@ -1486,20 +1782,20 @@ async function handleNetAdaptData(d, src) {
 
   const conn = netAdaptConnections.get(localPort);
   if (!conn) {
-    console.warn('[SW-NETADAPT] DATA for unknown port', localPort);
+    console.warn("[SW-NETADAPT] DATA for unknown port", localPort);
     return;
   }
 
   // Parse the HTTP request from the TCP payload bytes
   try {
     const text = new TextDecoder().decode(new Uint8Array(data));
-    const lines = text.split('\r\n');
-    const requestLine = lines[0] || '';
-    const parts = requestLine.split(' ');
-    const method = parts[0] || 'GET';
-    let path = parts[1] || '/';
+    const lines = text.split("\r\n");
+    const requestLine = lines[0] || "";
+    const parts = requestLine.split(" ");
+    const method = parts[0] || "GET";
+    let path = parts[1] || "/";
     // Handle absolute-URI form: GET http://host/path HTTP/1.1
-    if (path.startsWith('http://') || path.startsWith('https://')) {
+    if (path.startsWith("http://") || path.startsWith("https://")) {
       try {
         path = new URL(path).pathname + new URL(path).search;
       } catch (e) {}
@@ -1511,15 +1807,17 @@ async function handleNetAdaptData(d, src) {
     for (; i < lines.length; i++) {
       const line = lines[i];
       if (!line) break;
-      const colon = line.indexOf(':');
+      const colon = line.indexOf(":");
       if (colon > 0) {
-        headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
+        headers[line.slice(0, colon).trim().toLowerCase()] = line
+          .slice(colon + 1)
+          .trim();
       }
     }
 
     // Body starts after the empty line
     let body = null;
-    const bodyStart = text.indexOf('\r\n\r\n');
+    const bodyStart = text.indexOf("\r\n\r\n");
     if (bodyStart >= 0 && bodyStart + 4 < data.length) {
       body = data.slice(bodyStart + 4);
     }
@@ -1538,8 +1836,8 @@ async function handleNetAdaptData(d, src) {
       resp = await fetch(url, { ...reqInit, signal: conn.controller.signal });
     } catch (e) {
       // Silently swallow abort errors from handleNetAdaptClose — they are expected
-      if (e.name === 'AbortError') {
-        console.log('[SW-NETADAPT] Fetch aborted for port', localPort);
+      if (e.name === "AbortError") {
+        console.log("[SW-NETADAPT] Fetch aborted for port", localPort);
         return;
       }
       throw e;
@@ -1548,22 +1846,24 @@ async function handleNetAdaptData(d, src) {
     const buf = await resp.arrayBuffer();
     const bytes = Array.from(new Uint8Array(buf));
 
-    if (src) src.postMessage({
-      type: 'NET_ADAPT_RESPONSE',
-      localPort,
-      data: bytes,
-      close: headers['connection'] === 'close',
-    });
+    if (src)
+      src.postMessage({
+        type: "NET_ADAPT_RESPONSE",
+        localPort,
+        data: bytes,
+        close: headers["connection"] === "close",
+      });
 
     totalBytes += buf.byteLength;
     totalRequests++;
   } catch (e) {
-    console.error('[SW-NETADAPT] Data fetch failed:', e.message);
-    if (src) src.postMessage({
-      type: 'NET_ADAPT_ERROR',
-      localPort,
-      error: e.message,
-    });
+    console.error("[SW-NETADAPT] Data fetch failed:", e.message);
+    if (src)
+      src.postMessage({
+        type: "NET_ADAPT_ERROR",
+        localPort,
+        error: e.message,
+      });
   }
 }
 
@@ -1573,15 +1873,18 @@ function handleNetAdaptClose(d, src) {
 
   const conn = netAdaptConnections.get(localPort);
   if (conn && conn.controller) {
-    try { conn.controller.abort(); } catch (e) {}
+    try {
+      conn.controller.abort();
+    } catch (e) {}
   }
   netAdaptConnections.delete(localPort);
-  console.log('[SW-NETADAPT] CLOSE local_port=' + localPort);
+  console.log("[SW-NETADAPT] CLOSE local_port=" + localPort);
 
-  if (src) src.postMessage({
-    type: 'NET_ADAPT_CLOSED',
-    localPort,
-  });
+  if (src)
+    src.postMessage({
+      type: "NET_ADAPT_CLOSED",
+      localPort,
+    });
 }
 
 /**
@@ -1593,67 +1896,72 @@ function handleNetAdaptClose(d, src) {
  */
 function buildObfuscatedRequest(method, host, headers, body) {
   // Delegate to NeptuneObfuscator if injected
-  var mod = _useModule('NeptuneObfuscator');
+  var mod = _useModule("NeptuneObfuscator");
   if (mod) {
     try {
       var reqHeaders = new Headers();
-      for (var hk in headers) { reqHeaders.set(hk, headers[hk]); }
+      for (var hk in headers) {
+        reqHeaders.set(hk, headers[hk]);
+      }
       mod.applyHeaders(reqHeaders, { stripReferer: false });
       var modInit = {
         method: method,
-        redirect: 'follow',
-        cache: 'no-store',
-        mode: 'cors',
+        redirect: "follow",
+        cache: "no-store",
+        mode: "cors",
         headers: reqHeaders,
       };
       if (body && body.length > 0) modInit.body = new Uint8Array(body);
-      if (swConfig.userAgent) modInit.headers.set('user-agent', swConfig.userAgent);
+      if (swConfig.userAgent)
+        modInit.headers.set("user-agent", swConfig.userAgent);
       return modInit;
-    } catch(e) {}
+    } catch (e) {}
   }
   // Fallback inline implementation
   const init = {
     method: method,
-    redirect: 'follow',
-    cache: 'no-store',
-    mode: 'cors',
+    redirect: "follow",
+    cache: "no-store",
+    mode: "cors",
   };
 
   // Phase 6: Header randomization profiles
   const profiles = [
     // Chrome 120 on Windows
     {
-      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      'accept-language': 'en-US,en;q=0.9',
-      'accept-encoding': 'gzip, deflate, br',
-      'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'document',
-      'sec-fetch-mode': 'navigate',
-      'sec-fetch-site': 'none',
-      'sec-fetch-user': '?1',
-      'upgrade-insecure-requests': '1',
-      'dnt': '1',
+      accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "accept-language": "en-US,en;q=0.9",
+      "accept-encoding": "gzip, deflate, br",
+      "sec-ch-ua":
+        '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": '"Windows"',
+      "sec-fetch-dest": "document",
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-site": "none",
+      "sec-fetch-user": "?1",
+      "upgrade-insecure-requests": "1",
+      dnt: "1",
     },
     // Firefox 121 on macOS
     {
-      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'accept-language': 'en-US,en;q=0.5',
-      'accept-encoding': 'gzip, deflate, br',
-      'dnt': '1',
-      'sec-fetch-dest': 'document',
-      'sec-fetch-mode': 'navigate',
-      'sec-fetch-site': 'none',
-      'sec-fetch-user': '?1',
-      'upgrade-insecure-requests': '1',
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "accept-language": "en-US,en;q=0.5",
+      "accept-encoding": "gzip, deflate, br",
+      dnt: "1",
+      "sec-fetch-dest": "document",
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-site": "none",
+      "sec-fetch-user": "?1",
+      "upgrade-insecure-requests": "1",
     },
     // Safari 17 on macOS
     {
-      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'accept-language': 'en-US,en;q=0.9',
-      'accept-encoding': 'gzip, deflate, br',
-      'upgrade-insecure-requests': '1',
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "accept-language": "en-US,en;q=0.9",
+      "accept-encoding": "gzip, deflate, br",
+      "upgrade-insecure-requests": "1",
     },
   ];
 
@@ -1677,7 +1985,14 @@ function buildObfuscatedRequest(method, host, headers, body) {
   }
 
   // Override with any headers from the actual HTTP request (normalized lowercase)
-  const preserveHeaders = ['host', 'content-type', 'content-length', 'authorization', 'cookie', 'x-requested-with'];
+  const preserveHeaders = [
+    "host",
+    "content-type",
+    "content-length",
+    "authorization",
+    "cookie",
+    "x-requested-with",
+  ];
   for (const key of Object.keys(headers)) {
     const lowerKey = key.toLowerCase();
     if (preserveHeaders.includes(lowerKey)) {
@@ -1687,28 +2002,34 @@ function buildObfuscatedRequest(method, host, headers, body) {
 
   // Inject dynamic referer for obfuscation
   const referers = [
-    'https://www.google.com/',
-    'https://duckduckgo.com/',
-    'https://www.bing.com/',
-    'https://search.yahoo.com/',
-    'https://www.reddit.com/',
+    "https://www.google.com/",
+    "https://duckduckgo.com/",
+    "https://www.bing.com/",
+    "https://search.yahoo.com/",
+    "https://www.reddit.com/",
   ];
-  if (!randomizedHeaders.has('referer') && Math.random() > 0.3) {
-    randomizedHeaders.set('referer', referers[Math.floor(Math.random() * referers.length)]);
+  if (!randomizedHeaders.has("referer") && Math.random() > 0.3) {
+    randomizedHeaders.set(
+      "referer",
+      referers[Math.floor(Math.random() * referers.length)],
+    );
   }
 
   // Apply user agent override from config if set
   if (swConfig.userAgent) {
-    randomizedHeaders.set('user-agent', swConfig.userAgent);
+    randomizedHeaders.set("user-agent", swConfig.userAgent);
   } else {
     // Rotate User-Agent from profile pool
     const uas = [
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
     ];
-    randomizedHeaders.set('user-agent', uas[Math.floor(Math.random() * uas.length)]);
+    randomizedHeaders.set(
+      "user-agent",
+      uas[Math.floor(Math.random() * uas.length)],
+    );
   }
 
   init.headers = randomizedHeaders;
@@ -1728,10 +2049,11 @@ function buildObfuscatedRequest(method, host, headers, body) {
 function applyTimingJitter() {
   // Random delay between 0ms and 500ms, weighted toward shorter delays
   const jitter = Math.floor(Math.pow(Math.random(), 2) * 500);
-  return new Promise(r => setTimeout(r, jitter));
+  return new Promise((r) => setTimeout(r, jitter));
 }
 
 function broadcast(msg) {
-  clients.matchAll({ type: 'window', includeUncontrolled: true })
-    .then(cs => cs.forEach(c => c.postMessage(msg)));
+  clients
+    .matchAll({ type: "window", includeUncontrolled: true })
+    .then((cs) => cs.forEach((c) => c.postMessage(msg)));
 }

@@ -6,16 +6,16 @@ A browser-based proxy/unikernel that bootstraps from a **single SVG file**. Zero
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  neptune.svg (single-file cartridge, ~4MB)                        │
-│  ├─ Terminal UI (SVG foreignObject)                              │
-│  ├─ SW kernel code     — embedded as base64 blob                 │
-│  ├─ WASM JS glue       — embedded as base64 blob                 │
-│  ├─ WASM binary        — embedded as base64 blob (Rust kernel)   │
-│  └─ Bootloader script                                              │
-│      ├─ Parse ?url= target                                        │
-│      ├─ Decode SW → blob URL → register as Service Worker        │
-│      ├─ Decode WASM JS → blob URL → dynamic import               │
-│      ├─ Decode WASM binary → Response → init kernel               │
+│  neptune.svg (single-file cartridge, ~3MB)                      │
+│  ├─ Terminal UI (SVG foreignObject)                             │
+│  ├─ SW kernel code     — embedded as base64 blob                │
+│  ├─ WASM JS glue       — embedded as base64 blob                │
+│  ├─ WASM binary        — embedded as base64 blob (Rust kernel)  │
+│  └─ Bootloader script                                             │
+│      ├─ Parse ?url= target                                       │
+│      ├─ Decode SW → blob URL → register as Service Worker       │
+│      ├─ Decode WASM JS → blob URL → dynamic import              │
+│      ├─ Decode WASM binary → Response → init kernel             │
 │      └─ Create iframe for proxied viewport                       │
 └─────────────────────────────────────────────────────────────────┘
                                    │
@@ -31,21 +31,21 @@ A browser-based proxy/unikernel that bootstraps from a **single SVG file**. Zero
          └─────────────────────────┼─────────────────────────┘
                                    ▼
                     ┌─────────────────────────────┐
-                    │  Service Worker Kernel        │
-                    │  ├─ Strategy auto-detection   │
-                    │  ├─ Fetch interception        │
-                    │  ├─ HTML transformation       │
-                    │  │   ├─ URL rewriting          │
+                    │  Service Worker Kernel      │
+                    │  ├─ Strategy auto-detection  │
+                    │  ├─ Fetch interception       │
+                    │  ├─ HTML transformation      │
+                    │  │   ├─ URL rewriting        │
                     │  │   ├─ Tracker stripping    │
-                    │  │   └─ Runtime injection     │
-                    │  └─ WebRTC signaling          │
+                    │  │   └─ Runtime injection    │
+                    │  └─ WebRTC signaling         │
                     └─────────────┬───────────────┘
                                   │
                     ┌─────────────┴─────────────┐
                     ▼                           ▼
          ┌──────────────────┐      ┌──────────────────┐
          │ Local Proxy      │      │ Hosted Proxy     │
-         │ (python3 server)│      │ (configurable)   │
+         │ (python3 server) │      │ (configurable)   │
          │ /proxy?url=...   │      │                  │
          └──────────────────┘      └──────────────────┘
 ```
@@ -65,82 +65,187 @@ http://localhost:8080/neptune.svg?url=https://example.com
 
 Or open `http://localhost:8080/` for a landing page.
 
+## How to Use the Proxy
+
+### Basic Usage
+
+1. **Start the server:**
+   ```bash
+   python3 server.py
+   ```
+   This starts a local HTTP server on `http://localhost:8080/`
+
+2. **Open the proxy:**
+   - Direct: `http://localhost:8080/neptune.svg?url=https://example.com`
+   - Or use the landing page at `http://localhost:8080/`
+
+3. **Navigate:** Type any URL in the address bar and press Enter. The proxy will:
+   - Fetch the target site via ServiceWorker
+   - Rewrite all resource URLs to route through the proxy
+   - Load the page in an iframe with full browser functionality
+
+### URL Formats
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| `neptune.svg?url=https://target.com` | `neptune.svg?url=https://google.com` | Direct target |
+| `neptune.svg?url=https://target.com&__nptn=1` | Internal | Iframe navigation mode |
+| `?url=https://target.com&state=BASE64...` | With saved state | Resumable sessions |
+
+### Proxy Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `url` | Target URL to proxy |
+| `__nptn` | Internal flag for iframe navigation |
+| `state` | Base64-encoded session state for persistence |
+
 ## Multi-Strategy CORS Bypass
 
 The Service Worker automatically tries strategies in priority order:
 
 | Priority | Strategy | Description | Requirements |
 |----------|----------|-------------|--------------|
-| 1 | **Extension** | Direct fetch with `<all_urls>` permission | Browser extension |
+| 1 | **CORS Direct** | SW fetches target directly | Works for most sites |
 | 2 | **iframe Relay** | postMessage to same-origin iframe | Target allows framing |
-| 3 | **WebRTC P2P** | Data channel to peer with internet | Peer node + signaling |
-| 4 | **Local Proxy** | `/proxy?url=...` endpoint on localhost | `python3 server.py` |
-| 5 | **Hosted Proxy** | Configurable remote proxy endpoint | Hosted proxy server |
+| 3 | **Local Proxy** | `/proxy?url=...` endpoint on localhost | `python3 server.py` |
+| 4 | **WebRTC P2P** | Data channel to peer with internet | Peer node + signaling |
+| 5 | **Extension** | Direct fetch with `<all_urls>` permission | Browser extension |
 
-Configure manually:
+### Manual Strategy Selection
+
 ```javascript
+// Set strategy via browser console
 navigator.serviceWorker.controller.postMessage({
-  type: 'SET_STRATEGY', strategy: 'webrtc'  // or 'extension', 'iframe', 'local', 'hosted'
+  type: 'SET_STRATEGY',
+  strategy: 'cors'  // or 'iframe', 'local', 'webrtc', 'extension'
 });
+
+// Set custom proxy endpoint
 navigator.serviceWorker.controller.postMessage({
-  type: 'SET_PROXY', url: 'https://your-proxy.com/fetch?url='
+  type: 'SET_PROXY',
+  url: 'https://your-proxy.com/fetch?url='
 });
 ```
 
-## What the WASM Kernel Does
+## Features
+
+### Browser UI
+- **Address bar** with lock indicator and strategy display
+- **Navigation** — Back, Forward, Refresh, Home buttons
+- **Tab management** — Multiple proxy tabs with history
+- **Bookmarks** — Save and manage favorite sites (Ctrl+D)
+- **Reader Mode** — Distraction-free reading (Ctrl+Shift+R)
+- **Responsive Tester** — Test sites at different viewport sizes (Ctrl+Shift+M)
+- **Network Inspector** — Monitor all proxied requests (Ctrl+Shift+I)
+- **Console** — Execute JavaScript in proxied page context
+- **Dark/Light theme** toggle
+
+### Privacy & Security
+- **Anti-fingerprinting** — Canvas, WebGL, AudioContext, navigator spoofing
+- **Tracker blocking** — Blocks known analytics, ad, and tracking domains
+- **Cookie jar** — Per-domain simulated cookies stored locally
+- **Traffic obfuscation** — Randomized header profiles and timing jitter
+- **Header sanitization** — Strips CSP, X-Frame-Options, and other restrictive headers
+- **All data stays local** — Bookmarks, history, and settings in browser only
+
+### WASM Kernel Capabilities
 
 The Rust-compiled WASM kernel (`src/lib.rs`) provides:
 
-- **DOM AST Parser** (`tl` crate): Parses HTML into structured resource nodes
-- **Resource Graph**: Tracks scripts, stylesheets, images, iframes, XHRs
-- **Tracker Stripping**: Blocks known analytics/trackers (GA, GTM, Facebook, etc.)
-- **URL Rewriting**: Proxies all resources through `/proxy?url=...`
-- **State Snapshots**: Serializes entire heap to base64 for persistence
-
-## Files
-
-| File | Size | Purpose | Deploy? |
-|------|------|---------|---------|
-| `neptune.svg` | ~4MB | **Cartridge** — single self-contained file | **Yes** |
-| `template.svg` | 6KB | Build source for the cartridge | No |
-| `sw.js` | 15KB | Service Worker source (embedded in SVG) | Source only |
-| `src/lib.rs` | 20KB | Rust WASM kernel (DOM parser, tracker stripper) | Source only |
-| `build.py` | 3KB | Build script — compiles + embeds everything | Source only |
-| `server.py` | 5KB | Local dev server + proxy + WebRTC signaling | Optional |
-| `index.html` | 3KB | Landing page with URL input | Optional |
+- **DOM AST Parser** — Parses HTML into structured resource nodes
+- **Resource Graph** — Tracks scripts, stylesheets, images, iframes, XHRs
+- **Tracker Stripping** — Blocks known analytics/trackers (GA, GTM, Facebook, etc.)
+- **URL Rewriting** — Proxies all resources through `/proxy?url=...`
+- **State Snapshots** — Serializes entire heap to base64 for persistence
 
 ## Deployment
 
-### The Cartridge (`neptune.svg`)
+### Local Development
 
-The SVG is **completely self-contained**. It can be served from any static host.
+```bash
+# Build the cartridge
+python3 build.py
 
-**Important:** `raw.githubusercontent.com` adds a `sandbox` CSP that **blocks Service Workers**. Use one of these:
+# Start server
+python3 server.py
 
-**GitHub Pages:**
+# Open browser to:
+# - http://localhost:8080/ (landing page)
+# - http://localhost:8080/neptune.svg?url=https://example.com
+```
+
+### GitHub Pages
+
 ```bash
 git checkout -b gh-pages
 git add neptune.svg index.html server.py
-git commit -m "deploy"
+git commit -m deploy
 git push origin gh-pages
-# Enable Pages in repo settings
+# Enable Pages in repo settings → Pages → Source: gh-pages branch
 ```
 
-**jsDelivr CDN** (correct MIME types + CORS):
-```
+**Important:** `raw.githubusercontent.com` adds a `sandbox` CSP that **blocks Service Workers**. Use GitHub Pages or jsDelivr CDN instead.
+
+### jsDelivr CDN
+
+The SVG is completely self-contained and works on any static host.
+
+```bash
+# Deploy to any GitHub repo, then access via jsDelivr:
 https://cdn.jsdelivr.net/gh/<user>/<repo>@main/neptune.svg?url=https://example.com
 ```
 
-### The Proxy Endpoint
+Or use the landing page:
+```bash
+https://cdn.jsdelivr.net/gh/<user>/<repo>@main/index.html?url=https://example.com
+```
 
-The proxy requires a server because browsers block cross-origin `fetch()` (CORS).
+### CDN Co-hosting
 
-| Option | Setup |
-|--------|-------|
-| **Local** | `python3 server.py` — runs on localhost:8080 |
-| **Hosted** | `postMessage({type:'SET_PROXY', url:'...'})` |
-| **Extension** | Package as browser extension — no proxy needed |
-| **WebRTC** | Connect to peer node via `/signal` endpoint |
+For CDN compatibility, `sw.js` is also written as a standalone file alongside `neptune.svg`. The bootloader will:
+1. Try to register `./sw.js` from the same origin (works on CDNs with correct MIME type)
+2. Fall back to the embedded base64 ServiceWorker in the SVG blob URL
+
+## Transport Layer
+
+The proxy includes 13 transport modules auto-detected at boot:
+
+| Transport | Description |
+|-----------|-------------|
+| **Transport Base** | Core transport interface |
+| **Transport Detector** | Auto-detection of best transport |
+| **TURN Relay** | Public STUN/TURN as free TCP relay |
+| **WebRTC DataChannel** | P2P mesh between Neptune instances |
+| **smoltcp WASM** | In-browser TCP/IP stack + SW bridge |
+| **CSS Houdini** | Experimental cross-origin reader |
+| **Tor WASM** | Anonymous routing via Tor network |
+| **Web Locks** | Synchronized cross-tab locking |
+| **SVG GPU** | GPU-accelerated rendering pipeline |
+| **WebCodecs** | Hardware-accelerated video/audio codec |
+| **AudioWorklet Modem** | Audio-based data transfer |
+| **OPFS Ring Buffer** | Async file system with ring buffers |
+| **WebRTC Local Mesh** | Local network peer discovery |
+
+## Engine Layer
+
+13 engine modules provide advanced proxy features:
+
+| Engine | Purpose |
+|--------|---------|
+| **HTML Rewriter** | Full HTML/CSS/JS transformation |
+| **Security** | Header sanitization, CSP injection |
+| **Tracker Blocking** | Pattern-based ad/analytics blocking |
+| **Cookie Jar** | Per-domain cookie simulation |
+| **Cache API** | Response caching with TTL |
+| **Obfuscator** | Traffic fingerprint randomization |
+| **Logger** | Request logging and statistics |
+| **Streaming Rewriter** | Progressive HTML transformation |
+| **AI Engine** | ML-based content adaptation |
+| **Persistence Engine** | State serialization/deserialization |
+| **Mesh Engine** | Peer-to-peer networking coordination |
+| **CORS Bypass** | Advanced CORS workarounds |
+| **DOM Proxy Engine** | Cross-origin DOM access relay |
 
 ## State Snapshots
 
@@ -154,10 +259,22 @@ const urlWithState = window.exportState();
 
 This persists:
 - VFS entries (`/etc`, `/var`, `/home`)
-- Request counts
-- Proxy rules
+- Request counts and statistics
+- Proxy rules and configurations
 - Resource graph
-- Sessions
+- Sessions and cookies
+
+## Files
+
+| File | Size | Purpose | Deploy? |
+|------|------|---------|---------|
+| `neptune.svg` | ~3MB | **Cartridge** — single self-contained file | **Yes** |
+| `sw.js` | 78KB | Service Worker source (embedded in SVG + CDN co-host) | Yes |
+| `template.svg` | 20KB | Build source for the cartridge | No |
+| `src/lib.rs` | 20KB | Rust WASM kernel (DOM parser, tracker stripper) | Source only |
+| `build.py` | 10KB | Build script — compiles + embeds everything | Source only |
+| `server.py` | 8KB | Local dev server + proxy + WebRTC signaling | Optional |
+| `index.html` | 4KB | Landing page with URL input | Yes |
 
 ## Build Requirements
 
@@ -165,9 +282,10 @@ This persists:
 - Python 3
 - Rust toolchain
 
-## Security
+## Security Notes
 
 - Service Workers require HTTPS or localhost
 - The proxy server fetches arbitrary URLs — run only locally or behind auth
 - Extension mode has full cross-origin access — use responsibly
-- Tracker stripping blocks known analytics domains but is not exhaustive
+- Tracker blocking blocks known analytics domains but is not exhaustive
+- All local data (bookmarks, history, cookies) stays in your browser

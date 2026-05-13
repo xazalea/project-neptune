@@ -94,6 +94,9 @@ def main():
     transport_locks_b64 = b64_file_optional(os.path.join(transports_dir, "locks.js"), "Web Locks")
     transport_svg_gpu_b64 = b64_file_optional(os.path.join(transports_dir, "svg_gpu.js"), "SVG GPU pipeline")
     transport_webcodecs_b64 = b64_file_optional(os.path.join(transports_dir, "webcodecs.js"), "WebCodecs")
+    transport_audio_modem_b64 = b64_file_optional(os.path.join(transports_dir, "audio_modem.js"), "AudioWorklet Modem")
+    transport_opfs_buffer_b64 = b64_file_optional(os.path.join(transports_dir, "opfs_buffer.js"), "OPFS Ring Buffer")
+    transport_webrtc_mesh_b64 = b64_file_optional(os.path.join(transports_dir, "webrtc_mesh.js"), "WebRTC Local Mesh")
     storage_fs_b64 = b64_file_optional(os.path.join(PROJ, "src", "storage", "fs.js"), "File System Access")
 
     # Engine modules
@@ -107,6 +110,11 @@ def main():
     engine_obfuscator_b64 = b64_file_optional(os.path.join(engine_dir, "obfuscator.js"), "Obfuscator")
     engine_logger_b64 = b64_file_optional(os.path.join(engine_dir, "logger.js"), "Logger")
     engine_streaming_rewriter_b64 = b64_file_optional(os.path.join(engine_dir, "streaming-rewriter.js"), "Streaming rewriter")
+    engine_ai_b64 = b64_file_optional(os.path.join(engine_dir, "ai.js"), "AI Engine")
+    engine_persistence_b64 = b64_file_optional(os.path.join(engine_dir, "persistence.js"), "Persistence Engine")
+    engine_mesh_b64 = b64_file_optional(os.path.join(engine_dir, "mesh.js"), "Mesh Engine")
+    engine_cors_bypass_b64 = b64_file_optional(os.path.join(engine_dir, "cors-bypass.js"), "CORS Bypass")
+    engine_dom_proxy_b64 = b64_file_optional(os.path.join(engine_dir, "dom-proxy.js"), "DOM Proxy Engine")
 
     # 3. Read template and inject
     print("\n[3/6] Embedding into SVG template...")
@@ -141,6 +149,14 @@ def main():
         '"{{ENGINE_CACHE}}"': f'"{engine_cache_b64}"',
         '"{{ENGINE_OBFUSCATOR}}"': f'"{engine_obfuscator_b64}"',
         '"{{ENGINE_LOGGER}}"': f'"{engine_logger_b64}"',
+        '"{{ENGINE_AI}}"': f'"{engine_ai_b64}"',
+        '"{{ENGINE_PERSISTENCE}}"': f'"{engine_persistence_b64}"',
+        '"{{ENGINE_MESH}}"': f'"{engine_mesh_b64}"',
+        '"{{ENGINE_CORS_BYPASS}}"': f'"{engine_cors_bypass_b64}"',
+        '"{{ENGINE_DOM_PROXY}}"': f'"{engine_dom_proxy_b64}"',
+        '"{{TRANSPORT_AUDIO_MODEM}}"': f'"{transport_audio_modem_b64}"',
+        '"{{TRANSPORT_OPFS_BUFFER}}"': f'"{transport_opfs_buffer_b64}"',
+        '"{{TRANSPORT_WEBRTC_MESH}}"': f'"{transport_webrtc_mesh_b64}"',
     }
 
     for old, new in replacements.items():
@@ -152,11 +168,12 @@ def main():
         "{{BOOTLOADER}}",
         "{{TRANSPORT_BASE}}", "{{TRANSPORT_DETECTOR}}", "{{TRANSPORT_TURN}}",
         "{{TRANSPORT_WEBRTC}}", "{{TRANSPORT_SMOLTCP_JS}}", "{{TRANSPORT_HOUDINI}}",
-        "{{TRANSPORT_TOR}}", "{{TRANSPORT_LOCKS}}", "{{TRANSPORT_SVG_GPU}}", "{{TRANSPORT_WEBCODECS}}",
-        "{{STORAGE_FS}}", "{{ENGINE_STREAMING_REWRITER}}",
+        "{{TRANSPORT_TOR}}", "{{TRANSPORT_LOCKS}}", "{{TRANSPORT_SVG_GPU}}",        "{{TRANSPORT_WEBCODECS}}", "{{STORAGE_FS}}",        "{{ENGINE_STREAMING_REWRITER}}",
         "{{ENGINE_REWRITER}}", "{{ENGINE_SECURITY}}", "{{ENGINE_TRACKER}}",
         "{{ENGINE_COOKIES}}", "{{ENGINE_CACHE}}", "{{ENGINE_OBFUSCATOR}}", "{{ENGINE_LOGGER}}",
-        "{{ENGINE_STREAMING_REWRITER}}",
+        "{{ENGINE_AI}}", "{{ENGINE_PERSISTENCE}}", "{{ENGINE_MESH}}", "{{ENGINE_CORS_BYPASS}}",
+        "{{ENGINE_DOM_PROXY}}",
+        "{{TRANSPORT_AUDIO_MODEM}}", "{{TRANSPORT_OPFS_BUFFER}}", "{{TRANSPORT_WEBRTC_MESH}}",
     ]
 
     unreplaced = [p for p in all_placeholders if p in svg]
@@ -172,10 +189,23 @@ def main():
     else:
         print("  OK — all placeholders replaced")
 
-    # 4. Write output
+    # 4. Write outputs
     output_path = os.path.join(PROJ, "neptune.svg")
     with open(output_path, "w") as f:
         f.write(svg)
+
+    # Also write sw.js as a standalone file for CDN co-hosting.
+    # On CDNs (jsDelivr, gstatic), the bootloader registers ./sw.js
+    # which works natively with correct scope and MIME type.
+    # The embedded base64 SW in the SVG is the blob URL fallback.
+    sw_output_path = os.path.join(PROJ, "sw.js")
+    with open(sw_path, "r") as f_src:
+        sw_raw = f_src.read()
+    with open(sw_output_path, "w") as f:
+        f.write(sw_raw)
+    # Verify sw.js exists and is non-empty
+    sw_size = os.path.getsize(sw_output_path)
+    print(f"   Wrote sw.js ({sw_size} bytes) for CDN co-hosting")
 
     size_kb = len(svg) / 1024
     size_mb = size_kb / 1024
@@ -220,7 +250,14 @@ def main():
         ("Cache", engine_cache_b64),
         ("Obfuscator", engine_obfuscator_b64),
         ("Logger", engine_logger_b64),
-        ("Streaming Rewriter", engine_streaming_rewriter_b64),
+        ("AI Engine", engine_ai_b64),
+        ("Persistence Engine", engine_persistence_b64),
+        ("Mesh Engine", engine_mesh_b64),
+        ("CORS Bypass", engine_cors_bypass_b64),
+        ("DOM Proxy Engine", engine_dom_proxy_b64),
+        ("Audio Modem", transport_audio_modem_b64),
+        ("OPFS Buffer", transport_opfs_buffer_b64),
+        ("WebRTC Mesh", transport_webrtc_mesh_b64),
     ]:
         l = len(b64str) if b64str else 0
         total_chars += l
@@ -238,7 +275,7 @@ def main():
     print()
     print("  The cartridge is a SINGLE FILE:")
     print("    neptune.svg  — embeds SW + WASM + Network Adapter + Fingerprint")
-    print("                   + Bootloader + 6 Transports + 7 Engine Modules")
+    print("                   + Bootloader + 12 Transports + 11 Engine Modules")
     print()
     print("  Transport Layer (auto-detected at boot):")
     print("    - TURN Relay:     Public STUN/TURN as free TCP relay")

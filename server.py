@@ -18,17 +18,28 @@ PORT = 8080
 PROXY_PATH = "/proxy"
 SIGNAL_PATH = "/signal"
 
+# Headers stripped from proxied responses because they block iframe embedding
+# or interfere with the proxy's security model.
+PROXY_BLOCKED_RESPONSE_HEADERS = {
+    "transfer-encoding", "content-encoding", "content-length",
+    "x-frame-options", "content-security-policy",
+    "content-security-policy-report-only",
+    "strict-transport-security",
+    "cross-origin-embedder-policy", "cross-origin-opener-policy",
+    "permissions-policy", "set-cookie", "x-content-type-options",
+}
+
 # In-memory signal store for WebRTC
 signals = {}
 signal_lock = threading.Lock()
 
 class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        print(f"[{self.log_date_time_string()}] {args[0]} {args[1]}")
+        print(f"[{self.log_date_time_string()}] {args[0]} {args[1]}", flush=True)
 
     def end_headers(self):
-        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
+        # NOTE: Cross-Origin-Embedder-Policy: credentialless prevents the Service
+        # Worker from claiming the page (separate network partition). Removed.
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "*")
@@ -47,8 +58,21 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == SIGNAL_PATH:
             self._handle_signal_get(parsed.query)
             return
+        if parsed.path == '/sw.js':
+            self._serve_sw_js()
+            return
 
         super().do_GET()
+
+    def do_HEAD(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == PROXY_PATH:
+            self._handle_proxy(parsed.query, head_only=True)
+            return
+        if parsed.path == '/sw.js':
+            self._serve_sw_js(head_only=True)
+            return
+        super().do_HEAD()
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -62,9 +86,19 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_signal_post()
             return
 
-        super().do_GET()
+        # Unmatched POST — drain body to avoid TCP RST, then return 405
+        content_length = int(self.headers.get("Content-Length", 0))
+        while content_length > 0:
+            chunk = self.rfile.read(min(content_length, 65536))
+            if not chunk:
+                break
+            content_length -= len(chunk)
+        self.send_response(405)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Method Not Allowed\n")
 
-    def _handle_proxy(self, query, body=None):
+    def _handle_proxy(self, query, body=None, head_only=False):
         params = urllib.parse.parse_qs(query)
         target = params.get("url", [None])[0]
 
@@ -95,10 +129,12 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
             with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
                 self.send_response(resp.status)
                 for k, v in resp.headers.items():
-                    if k.lower() not in ("transfer-encoding", "content-encoding", "content-length"):
+                    if k.lower() not in PROXY_BLOCKED_RESPONSE_HEADERS:
                         self.send_header(k, v)
+                self.send_header('Cross-Origin-Resource-Policy', 'cross-origin')
                 self.end_headers()
-                self.wfile.write(resp.read())
+                if not head_only:
+                    self.wfile.write(resp.read())
 
         except Exception as e:
             self.send_response(502)
@@ -136,6 +172,22 @@ class NeptuneHandler(http.server.SimpleHTTPRequestHandler):
         # Timeout — return empty
         self.send_response(204)
         self.end_headers()
+
+    def _serve_sw_js(self, head_only=False):
+        sw_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sw.js')
+        if not os.path.exists(sw_path):
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/javascript; charset=utf-8')
+        self.send_header('Cross-Origin-Resource-Policy', 'cross-origin')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Content-Length', str(os.path.getsize(sw_path)))
+        self.end_headers()
+        if not head_only:
+            with open(sw_path, 'rb') as f:
+                self.wfile.write(f.read())
 
     def _handle_signal_post(self):
         """Post a WebRTC signal."""

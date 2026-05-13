@@ -8,16 +8,15 @@
  * Architecture:
  *   Rust TCP Stack (smoltcp) → custom JsDevice → JS callback → SW fetch() → Internet
  */
-
-use smoltcp::iface::{Config, Interface, SocketSet, Routes};
+use smoltcp::iface::{Config, Interface, Routes, SocketSet};
 use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
 use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpBuffer};
 use smoltcp::socket::Socket;
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-use wasm_bindgen::prelude::*;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use wasm_bindgen::prelude::*;
 
 // ═══════════════════════════════════════════════════════
 // Timestamp helper — bridges to JS performance.now()
@@ -74,10 +73,12 @@ impl JsDevice {
 }
 
 impl Device for JsDevice {
-    type RxToken<'a> = JsRxToken
+    type RxToken<'a>
+        = JsRxToken
     where
         Self: 'a;
-    type TxToken<'a> = JsTxToken<'a>
+    type TxToken<'a>
+        = JsTxToken<'a>
     where
         Self: 'a;
 
@@ -203,7 +204,10 @@ impl NeptuneNetStack {
 
         // Assign IP
         iface.update_ip_addrs(|addrs| {
-            let _ = addrs.push(IpCidr::new(IpAddress::v4(ip.0[0], ip.0[1], ip.0[2], ip.0[3]), 24));
+            let _ = addrs.push(IpCidr::new(
+                IpAddress::v4(ip.0[0], ip.0[1], ip.0[2], ip.0[3]),
+                24,
+            ));
         });
 
         // Set up routes: add default IPv4 gateway
@@ -222,10 +226,7 @@ impl NeptuneNetStack {
             mac,
             ip,
             gateway,
-            _dns_servers: vec![
-                Ipv4Address::new(1, 1, 1, 1),
-                Ipv4Address::new(8, 8, 8, 8),
-            ],
+            _dns_servers: vec![Ipv4Address::new(1, 1, 1, 1), Ipv4Address::new(8, 8, 8, 8)],
         };
 
         let mut guard = NET_STACK.lock().unwrap();
@@ -352,7 +353,11 @@ impl NeptuneNetStack {
                     if tcp.local_endpoint().map(|e| e.port) == Some(port) {
                         match tcp.send_slice(data) {
                             Ok(n) => {
-                                crate::console_log(&format!("[NET] TCP sent {} / {} bytes", n, data.len()));
+                                crate::console_log(&format!(
+                                    "[NET] TCP sent {} / {} bytes",
+                                    n,
+                                    data.len()
+                                ));
                                 return n == data.len();
                             }
                             Err(e) => {
@@ -395,17 +400,16 @@ impl NeptuneNetStack {
                                         &obj,
                                         &JsValue::from_str("type"),
                                         &JsValue::from_str("data"),
-                                    ).ok();
-                                    js_sys::Reflect::set(
-                                        &obj,
-                                        &JsValue::from_str("data"),
-                                        &data,
-                                    ).ok();
+                                    )
+                                    .ok();
+                                    js_sys::Reflect::set(&obj, &JsValue::from_str("data"), &data)
+                                        .ok();
                                     js_sys::Reflect::set(
                                         &obj,
                                         &JsValue::from_str("port"),
                                         &JsValue::from_f64(local_port as f64),
-                                    ).ok();
+                                    )
+                                    .ok();
                                     let _ = cb.call1(&JsValue::NULL, &obj);
                                     callbacks_fired += 1;
                                 }
@@ -425,12 +429,14 @@ impl NeptuneNetStack {
                                 &obj,
                                 &JsValue::from_str("type"),
                                 &JsValue::from_str("close"),
-                            ).ok();
+                            )
+                            .ok();
                             js_sys::Reflect::set(
                                 &obj,
                                 &JsValue::from_str("port"),
                                 &JsValue::from_f64(local_port as f64),
-                            ).ok();
+                            )
+                            .ok();
                             let _ = cb.call1(&JsValue::NULL, &obj);
                             callbacks_fired += 1;
                         }
@@ -478,7 +484,12 @@ impl NeptuneNetStack {
             Some(p) => p,
             None => {
                 let obj = js_sys::Object::new();
-                js_sys::Reflect::set(&obj, &JsValue::from_str("error"), &JsValue::from_str("Invalid URL")).ok();
+                js_sys::Reflect::set(
+                    &obj,
+                    &JsValue::from_str("error"),
+                    &JsValue::from_str("Invalid URL"),
+                )
+                .ok();
                 let _ = cb.call1(&JsValue::NULL, &obj);
                 return;
             }
@@ -494,18 +505,22 @@ impl NeptuneNetStack {
         // Wrap the HTTP callback as a Closure that lives as long as the connection
         let response_cb = Closure::wrap(Box::new(move |event: JsValue| {
             let obj = js_sys::Object::new();
-            if let Ok(Some(type_str)) = js_sys::Reflect::get(&event, &JsValue::from_str("type"))
-                .map(|v| v.as_string())
+            if let Ok(Some(type_str)) =
+                js_sys::Reflect::get(&event, &JsValue::from_str("type")).map(|v| v.as_string())
             {
                 match type_str.as_str() {
                     "data" => {
-                        if let Ok(data_val) = js_sys::Reflect::get(&event, &JsValue::from_str("data")) {
+                        if let Ok(data_val) =
+                            js_sys::Reflect::get(&event, &JsValue::from_str("data"))
+                        {
                             let uint8 = js_sys::Uint8Array::new(&data_val);
                             let mut bytes = vec![0u8; uint8.length() as usize];
                             uint8.copy_to(&mut bytes);
 
                             if let Ok(text) = std::str::from_utf8(&bytes) {
-                                if let Some((_status_end, headers_start, body_start)) = parse_http_response(text) {
+                                if let Some((_status_end, headers_start, body_start)) =
+                                    parse_http_response(text)
+                                {
                                     let status_line = &text[..headers_start];
                                     let status_code: u16 = status_line
                                         .split_whitespace()
@@ -521,14 +536,30 @@ impl NeptuneNetStack {
                                                 &headers_obj,
                                                 &JsValue::from_str(k.trim()),
                                                 &JsValue::from_str(v.trim()),
-                                            ).ok();
+                                            )
+                                            .ok();
                                         }
                                     }
 
                                     let body = &text[body_start..];
-                                    js_sys::Reflect::set(&obj, &JsValue::from_str("status"), &JsValue::from_f64(status_code as f64)).ok();
-                                    js_sys::Reflect::set(&obj, &JsValue::from_str("headers"), &headers_obj).ok();
-                                    js_sys::Reflect::set(&obj, &JsValue::from_str("body"), &JsValue::from_str(body)).ok();
+                                    js_sys::Reflect::set(
+                                        &obj,
+                                        &JsValue::from_str("status"),
+                                        &JsValue::from_f64(status_code as f64),
+                                    )
+                                    .ok();
+                                    js_sys::Reflect::set(
+                                        &obj,
+                                        &JsValue::from_str("headers"),
+                                        &headers_obj,
+                                    )
+                                    .ok();
+                                    js_sys::Reflect::set(
+                                        &obj,
+                                        &JsValue::from_str("body"),
+                                        &JsValue::from_str(body),
+                                    )
+                                    .ok();
                                 }
                             }
                         }
@@ -541,7 +572,10 @@ impl NeptuneNetStack {
         }) as Box<dyn FnMut(JsValue)>);
 
         // Get a js_sys::Function from the closure and forget it (GC manages lifecycle)
-        let cb_fn: js_sys::Function = response_cb.as_ref().unchecked_ref::<js_sys::Function>().clone();
+        let cb_fn: js_sys::Function = response_cb
+            .as_ref()
+            .unchecked_ref::<js_sys::Function>()
+            .clone();
         response_cb.forget();
 
         let local_port = self.tcp_connect(&ip_addr, port, cb_fn);
@@ -593,7 +627,9 @@ impl NeptuneNetStack {
 
 fn parse_ipv4(s: &str) -> Option<Ipv4Address> {
     let parts: Vec<&str> = s.split('.').collect();
-    if parts.len() != 4 { return None; }
+    if parts.len() != 4 {
+        return None;
+    }
     let a = parts[0].parse().ok()?;
     let b = parts[1].parse().ok()?;
     let c = parts[2].parse().ok()?;

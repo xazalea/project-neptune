@@ -363,6 +363,90 @@ const TransportDetector = (function() {
         return { available: true };
       }
     },
+
+    opfsBuffer: {
+      name: 'opfs-buffer',
+      tier: 'experimental',
+      priority: 13,
+      requiresServiceWorker: false,
+      requiresWASM: false,
+      requiresExternalRelay: false,
+      requiresLocalHelper: false,
+      supportsEncrypted: false,
+      maxThroughput: 100000,
+      latency: 1,
+      browserSupport: ['chrome', 'edge'],
+      async detect() {
+        if (!navigator.storage || !navigator.storage.getDirectory) {
+          return { available: false, reason: 'Origin Private File System not supported' };
+        }
+        try {
+          const dir = await navigator.storage.getDirectory();
+          // Try creating a sync access handle to verify full API support
+          const file = await dir.getFileHandle('__nptn_probe', { create: true });
+          const handle = await file.createSyncAccessHandle();
+          handle.close();
+          await dir.removeEntry('__nptn_probe');
+          return { available: true };
+        } catch (e) {
+          return { available: false, reason: 'OPFS API incomplete: ' + e.message };
+        }
+      }
+    },
+
+    webrtcMesh: {
+      name: 'webrtc-local-mesh',
+      tier: 'experimental',
+      priority: 14,
+      requiresServiceWorker: false,
+      requiresWASM: false,
+      requiresExternalRelay: false,
+      requiresLocalHelper: false,
+      supportsEncrypted: true,
+      maxThroughput: 10000,
+      latency: 2,
+      browserSupport: ['chrome', 'firefox', 'edge'],
+      async detect() {
+        if (typeof RTCPeerConnection === 'undefined') {
+          return { available: false, reason: 'WebRTC not available' };
+        }
+        if (typeof BroadcastChannel === 'undefined') {
+          return { available: false, reason: 'BroadcastChannel not available' };
+        }
+        try {
+          const pc = new RTCPeerConnection({ iceServers: [] });
+          const dc = pc.createDataChannel('probe', { ordered: false });
+          pc.close();
+          return { available: true };
+        } catch (e) {
+          return { available: false, reason: 'WebRTC DataChannel failed: ' + e.message };
+        }
+      }
+    },
+
+    audioModem: {
+      name: 'audio-modem',
+      tier: 'experimental',
+      priority: 15,
+      requiresServiceWorker: false,
+      requiresWASM: false,
+      requiresExternalRelay: false,
+      requiresLocalHelper: false,
+      supportsEncrypted: false,
+      maxThroughput: 1,
+      latency: 100,
+      browserSupport: ['chrome', 'edge', 'firefox'],
+      async detect() {
+        if (typeof AudioContext === 'undefined' && typeof webkitAudioContext === 'undefined') {
+          return { available: false, reason: 'Web Audio API not supported' };
+        }
+        if (typeof AudioWorkletNode === 'undefined') {
+          return { available: false, reason: 'AudioWorklet not supported (requires secure context)' };
+        }
+        // AudioWorklet requires user gesture to start, but the API itself is detectable
+        return { available: true, note: 'Requires user gesture to initialize' };
+      }
+    },
   };
 
   // ═══════════════════════════════════════════════════════

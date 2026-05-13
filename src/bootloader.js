@@ -155,19 +155,44 @@ const NeptuneBoot = (function() {
     if (!('serviceWorker' in navigator)) return false;
     if (!swCode) return false;
 
+    let reg = null;
+
+    // Try file-based registration first (./sw.js works on any
+    // http/https server). Fall back to blob URL for CDN hosts
+    // where no separate sw.js file exists.
     try {
-      // Decode base64 SW code
-      const decoded = atob(swCode);
-
-      // Create blob URL for SW
-      const blob = new Blob([decoded], { type: 'application/javascript' });
-      const swUrl = URL.createObjectURL(blob);
-
-      // Register from blob URL
-      const reg = await navigator.serviceWorker.register(swUrl, {
+      reg = await navigator.serviceWorker.register('./sw.js', {
         scope: './',
         updateViaCache: 'none',
       });
+      logFn(L.INF, 'SW registered from ./sw.js, scope: ' + reg.scope);
+    } catch (fileErr) {
+      logFn(L.WRN, './sw.js failed (' + fileErr.message + ') — trying blob URL');
+    }
+
+    if (!reg) {
+      try {
+        // Decode base64 SW code
+        const decoded = atob(swCode);
+
+        // Create blob URL for SW
+        const blob = new Blob([decoded], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(blob);
+
+        // Register from blob URL
+        logFn(L.INF, 'Registering SW from blob URL (' + decoded.length + ' bytes)');
+        reg = await navigator.serviceWorker.register(swUrl, {
+          scope: './',
+          updateViaCache: 'none',
+        });
+        logFn(L.INF, 'SW blob registered, scope: ' + reg.scope);
+      } catch (blobErr) {
+        logFn(L.ERR, 'Blob SW registration failed: ' + blobErr.message);
+        return false;
+      }
+    }
+
+    try {
 
       // Wait for activation
       await new Promise(function(resolve) {
@@ -178,10 +203,23 @@ const NeptuneBoot = (function() {
         });
       });
 
-      // Wait for controller
+      // Wait for controller (double-check prevents race: controllerchange
+      // may fire between the if-check and addEventListener)
       if (!navigator.serviceWorker.controller) {
         await new Promise(function(resolve) {
           navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+          if (navigator.serviceWorker.controller) resolve();
+        });
+      }
+
+      // Send proxy path (critical: SW registered from blob URL doesn't
+      // know the page path, so we must tell it the correct proxy entry point)
+      if (navigator.serviceWorker.controller) {
+        var proxyPath = window.location.pathname.replace(/\/[^/]*$/, '/neptune.svg');
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SET_PROXY_PATH',
+          proxyPath: proxyPath,
+          proxyRoot: window.location.origin + proxyPath + '?url=',
         });
       }
 

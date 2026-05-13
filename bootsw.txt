@@ -1,0 +1,221 @@
+      }
+
+      // ====== SERVICE WORKER ======
+      async function bootSW() {
+        if (!('serviceWorker' in navigator)) { toast('Service Workers not supported', 'error'); return false; }
+        try {
+          // ServiceWorker registration from './sw.js' — the SW file must be deployed
+          // alongside neptune.svg on the same CDN (e.g., jsDelivr serves both from GitHub).
+          var swURL = './sw.js';
+          log(L.INF, 'Registering SW from: ' + swURL);
+          var reg = await navigator.serviceWorker.register(swURL, { scope: './', updateViaCache: 'none' });
+          log(L.INF, 'SW scope: ' + reg.scope);
+
+          await new Promise(function(r){
+            var sw = reg.installing || reg.waiting || reg.active;
+            if (!sw || sw.state === 'activated') { r(); return; }
+            sw.addEventListener('statechange', function(e){ log(L.INF, 'SW state: ' + e.target.state); if (e.target.state === 'activated') r(); });
+          });
+
+          if (!navigator.serviceWorker.controller) {
+            await new Promise(function(r){ navigator.serviceWorker.addEventListener('controllerchange', r, {once:true}); });
+          }
+
+          navigator.serviceWorker.addEventListener('message', handleSWMessage);
+          swReady = true;
+          log(L.INF, 'SW controller active');
+
+          // Sync config
+          syncConfigToSW();
+          return true;
+        } catch(e) {
+          toast('SW failed: ' + e.message, 'error');
+          return false;
+        }
+      }
+
+      function handleSWMessage(e) {
+        var d = e.data;
+        if (!d || !d.type) return;
+        switch(d.type) {
+          case 'STRATEGY_SELECTED':
+            document.getElementById('status-strategy').textContent = 'Strategy: ' + d.strategy + (d.cors ? ' (CORS)' : '');
+            urlStrategy.style.display = 'inline';
+            urlStrategy.textContent = d.strategy.toUpperCase();
+            urlStrategy.style.color = d.cors ? '#00ff88' : '#ffaa00';
+            toast('Strategy: ' + d.strategy + (d.cors ? ' ✓' : ''));
+            break;
+          case 'REQUEST_LOG_ENTRY':
+            addNetworkEntry(d.entry);
+            break;
+          case 'DOWNLOAD_DETECTED':
+            downloads.unshift(d);
+            if (activePanel === 'downloads') renderDownloadsPanel();
+            toast('Download detected: ' + d.filename);
+            break;
+          case 'CONFIG_ACK':
+            swConfig = d.config;
+            break;
+          case 'STATS_DATA':
+            document.getElementById('status-requests').textContent = 'Requests: ' + d.totalRequests;
+            document.getElementById('status-bandwidth').textContent = 'Bandwidth: ' + formatBytes(d.totalBytes);
+            document.getElementById('status-blocked').textContent = 'Blocked: ' + d.blockedCount;
+            break;
+        }
+      }
+
+      // ====== URL INPUT ======
+      urlBar.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          var val = urlBar.value.trim();
+          if (!val) return;
+          if (val.startsWith('javascript:') || val.startsWith('data:')) { toast('Blocked protocol', 'warn'); return; }
+          if (!val.includes('://') && !val.startsWith('//')) {
+            // Search or add https
+            if (val.includes('.') && !val.includes(' ')) val = 'https://' + val;
+            else val = 'https://duckduckgo.com/html/?q=' + encodeURIComponent(val);
+          }
+          navigateTo(val);
+        }
+      });
+
+      // ====== CHROME BUTTONS ======
+      document.getElementById('btn-back').onclick = goBack;
+      document.getElementById('btn-forward').onclick = goForward;
+      document.getElementById('btn-refresh').onclick = refresh;
+      document.getElementById('btn-home').onclick = showLanding;
+      document.getElementById('btn-bookmark').onclick = addBookmark;
+      document.getElementById('btn-network').onclick = function(){ showPanel('network'); };
+      document.getElementById('btn-console').onclick = function(){ showPanel('console'); };
+      document.getElementById('btn-settings').onclick = function(){ showPanel('settings'); };
+      document.getElementById('btn-fullscreen').onclick = toggleFullscreen;
+      document.getElementById('btn-theme').onclick = toggleTheme;
+      document.getElementById('btn-reader').onclick = toggleReaderMode;
+      document.getElementById('btn-responsive').onclick = toggleResponsive;
+      document.getElementById('btn-screenshot').onclick = takeScreenshot;
+      document.getElementById('btn-new-tab').onclick = function(){ createTab(); };
+      document.getElementById('btn-close-panel').onclick = closePanel;
+      document.getElementById('btn-undo').onclick = undoCloseTab;
+      document.getElementById('btn-duplicate').onclick = duplicateTab;
+      document.getElementById('btn-zoom-out').onclick = zoomOut;
+      document.getElementById('btn-zoom-in').onclick = zoomIn;
+      document.getElementById('btn-zoom-reset').onclick = zoomReset;
+      document.getElementById('btn-find').onclick = findInPage;
+      document.getElementById('btn-close-reader').onclick = function(){ readerOverlay.style.display='none'; };
+      document.getElementById('btn-reader-original').onclick = function(){ readerOverlay.style.display='none'; };
+      document.getElementById('btn-close-responsive').onclick = function(){ responsiveBar.style.display='none'; setViewportSize('100%','100%'); };
+
+      // Panel tab buttons
+      panelOverlay.querySelectorAll('#panel-tabs button[data-panel]').forEach(function(btn) {
+        btn.onclick = function() { showPanel(btn.dataset.panel); };
+      });
+
+      // Responsive buttons
+      responsiveBar.querySelectorAll('button[data-w]').forEach(function(btn) {
+        btn.onclick = function() { setViewportSize(btn.dataset.w, btn.dataset.h); };
+      });
+      document.getElementById('btn-custom-size').onclick = function() {
+        var w = document.getElementById('custom-w').value;
+        var h = document.getElementById('custom-h').value;
+        if (w && h) setViewportSize(w, h);
+      };
+
+      // ====== KEYBOARD SHORTCUTS ======
+      document.addEventListener('keydown', function(e) {
+        // Ctrl+L → focus URL bar
+        if (e.ctrlKey && e.key === 'l') { e.preventDefault(); urlBar.focus(); urlBar.select(); }
+        // F5 → refresh
+        if (e.key === 'F5') { e.preventDefault(); refresh(); }
+        // Ctrl+R → refresh
+        if (e.ctrlKey && e.key === 'r') { e.preventDefault(); refresh(); }
+        // Ctrl+T → new tab
+        if (e.ctrlKey && e.key === 't') { e.preventDefault(); createTab(); }
+        // Ctrl+W → close tab
+        if (e.ctrlKey && e.key === 'w') { e.preventDefault(); var tab = tabs.find(function(t){return t.id===activeTabId}); if(tab)closeTab(tab.id); }
+        // Ctrl+Shift+O → reopen closed tab (avoids browser's Ctrl+Shift+T conflict)
+        if (e.ctrlKey && e.shiftKey && e.key === 'o') { e.preventDefault(); undoCloseTab(); }
+        // Ctrl+PageUp / Ctrl+PageDown → switch Neptune tabs (avoid Ctrl+Tab browser conflict)
+        if (e.ctrlKey && e.key === 'PageUp') { e.preventDefault(); var idx = tabs.findIndex(function(t){return t.id===activeTabId}); if(idx>0)activateTab(tabs[idx-1].id); }
+        if (e.ctrlKey && e.key === 'PageDown') { e.preventDefault(); var idx = tabs.findIndex(function(t){return t.id===activeTabId}); if(idx<tabs.length-1)activateTab(tabs[idx+1].id); }
+        // Alt+Left/Right → back/forward
+        if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); }
+        if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); }
+        // Ctrl+D → bookmark
+        if (e.ctrlKey && e.key === 'd') { e.preventDefault(); addBookmark(); }
+        // F11 → fullscreen
+        if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); }
+        // Escape → close panels
+        if (e.key === 'Escape') {
+          if (panelOverlay.style.display === 'flex') closePanel();
+          else if (readerOverlay.style.display === 'flex') readerOverlay.style.display = 'none';
+          else if (responsiveBar.style.display === 'flex') { responsiveBar.style.display = 'none'; setViewportSize('100%','100%'); }
+        }
+        // Ctrl+Shift+I → network
+        if (e.ctrlKey && e.shiftKey && e.key === 'I') { e.preventDefault(); showPanel('network'); }
+        // Ctrl+Shift+J → console
+        if (e.ctrlKey && e.shiftKey && e.key === 'J') { e.preventDefault(); showPanel('console'); }
+        // Ctrl+Shift+R → reader
+        if (e.ctrlKey && e.shiftKey && e.key === 'R') { e.preventDefault(); toggleReaderMode(); }
+        // Ctrl+Shift+M → responsive
+        if (e.ctrlKey && e.shiftKey && e.key === 'M') { e.preventDefault(); toggleResponsive(); }
+        // Ctrl+Shift+S → screenshot
+        if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); takeScreenshot(); }
+        // Ctrl+, → settings
+        if (e.ctrlKey && e.key === ',') { e.preventDefault(); showPanel('settings'); }
+        // Ctrl+H → history
+        if (e.ctrlKey && e.key === 'h') { e.preventDefault(); showPanel('history'); }
+        // Ctrl+B → bookmarks
+        if (e.ctrlKey && e.key === 'b') { e.preventDefault(); showPanel('bookmarks'); }
+        // Ctrl+F → find
+        if (e.ctrlKey && e.key === 'f') { e.preventDefault(); findInPage(); }
+        // Ctrl++ → zoom in
+        if (e.ctrlKey && e.key === '=') { e.preventDefault(); zoomIn(); }
+        // Ctrl+- → zoom out
+        if (e.ctrlKey && e.key === '-') { e.preventDefault(); zoomOut(); }
+        // Ctrl+0 → zoom reset
+        if (e.ctrlKey && e.key === '0') { e.preventDefault(); zoomReset(); }
+      });
+
+      // ====== LANDING INPUT ======
+      window.bootFromLanding = function() {
+        var val = document.getElementById('landing-url').value.trim();
+        if (!val) return;
+        if (!val.startsWith('http')) val = 'https://' + val;
+        navigateTo(val);
+      };
+
+      // ====== SHORTCUTS MODAL ======
+      window.showShortcuts = function() {
+        var list = document.getElementById('shortcuts-list');
+        var html = '';
+        for (var key in SHORTCUTS) {
+          html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #1a1a2e;"><span style="color:#ccc;font-family:monospace;">' + escapeHtml(key) + '</span><span style="color:#555;">' + escapeHtml(SHORTCUTS[key]) + '</span></div>';
+        }
+        list.innerHTML = html;
+        document.getElementById('shortcuts-modal').style.display = 'flex';
+      };
+
+      // ====== EXPORT STATE ======
+      window.exportState = function() {
+        if (!kernel) { toast('WASM not loaded', 'error'); return null; }
+        if (!kernel.create_snapshot) { toast('Snapshot not supported by WASM build', 'warn'); return null; }
+        try {
+          var snap = kernel.create_snapshot();
+          var u = new URL(window.location.href);
+          u.searchParams.set('state', snap);
+          log(L.INF, 'Snapshot: ' + snap.length + ' chars');
+          return u.toString();
+        } catch(e) { log(L.ERR, 'Export failed: ' + e.message); return null; }
+      };
+
+      // ====== BOOT SEQUENCE ======
+      function setBootStatus(msg, done) {
+        var el = document.getElementById('boot-status');
+        var overlay = document.getElementById('boot-overlay');
+        if (el) el.textContent = msg;
+        if (done && overlay) {
+          overlay.style.opacity = '0';
+          setTimeout(function() { if(overlay) overlay.style.display = 'none'; }, 400);
+        }
+      }
+

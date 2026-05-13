@@ -1,13 +1,12 @@
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Mutex;
 /**
  * project: neptune — WASM Unikernel Kernel
  * DOM AST parser, resource graph, tracker stripping, HTML transformation.
  */
-
 use wasm_bindgen::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
 
 pub mod network;
 
@@ -25,7 +24,9 @@ extern "C" {
     fn console_error(s: &str);
 }
 
-pub(crate) fn console_log(msg: &str) { log(msg); }
+pub(crate) fn console_log(msg: &str) {
+    log(msg);
+}
 
 // ==========================
 // Kernel State
@@ -96,11 +97,25 @@ static KERNEL_STATE: Lazy<Mutex<KernelState>> = Lazy::new(|| {
 
 fn default_tracker_list() -> Vec<String> {
     vec![
-        "google-analytics", "googletagmanager", "doubleclick",
-        "facebook", "fbcdn", "twitter", "analytics",
-        "tracker", "pixel", "beacon", "segment",
-        "mixpanel", "amplitude", "hotjar", "gtag",
-    ].into_iter().map(|s| s.to_string()).collect()
+        "google-analytics",
+        "googletagmanager",
+        "doubleclick",
+        "facebook",
+        "fbcdn",
+        "twitter",
+        "analytics",
+        "tracker",
+        "pixel",
+        "beacon",
+        "segment",
+        "mixpanel",
+        "amplitude",
+        "hotjar",
+        "gtag",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 // ==========================
@@ -142,7 +157,11 @@ impl NeptuneKernel {
         let count = state.request_count;
         drop(state);
 
-        console_log(&format!("[KERNEL] DOM parse #{}: {} bytes", count, html.len()));
+        console_log(&format!(
+            "[KERNEL] DOM parse #{}: {} bytes",
+            count,
+            html.len()
+        ));
 
         let mut graph = ResourceGraph::default();
         let _transformed = html.to_string();
@@ -160,8 +179,12 @@ impl NeptuneKernel {
                                     let url = src.as_utf8_str().to_string();
                                     let id = format!("script-{}", graph.nodes.len());
                                     graph.nodes.push(ResourceNode {
-                                        id, url, kind: "js".to_string(),
-                                        size: 0, transformed: false, blocked: false,
+                                        id,
+                                        url,
+                                        kind: "js".to_string(),
+                                        size: 0,
+                                        transformed: false,
+                                        blocked: false,
                                     });
                                 }
                             }
@@ -172,8 +195,12 @@ impl NeptuneKernel {
                                             let url = href.as_utf8_str().to_string();
                                             let id = format!("css-{}", graph.nodes.len());
                                             graph.nodes.push(ResourceNode {
-                                                id, url, kind: "css".to_string(),
-                                                size: 0, transformed: false, blocked: false,
+                                                id,
+                                                url,
+                                                kind: "css".to_string(),
+                                                size: 0,
+                                                transformed: false,
+                                                blocked: false,
                                             });
                                         }
                                     }
@@ -184,8 +211,12 @@ impl NeptuneKernel {
                                     let url = src.as_utf8_str().to_string();
                                     let id = format!("img-{}", graph.nodes.len());
                                     graph.nodes.push(ResourceNode {
-                                        id, url, kind: "img".to_string(),
-                                        size: 0, transformed: false, blocked: false,
+                                        id,
+                                        url,
+                                        kind: "img".to_string(),
+                                        size: 0,
+                                        transformed: false,
+                                        blocked: false,
                                     });
                                 }
                             }
@@ -194,8 +225,12 @@ impl NeptuneKernel {
                                     let url = src.as_utf8_str().to_string();
                                     let id = format!("iframe-{}", graph.nodes.len());
                                     graph.nodes.push(ResourceNode {
-                                        id, url, kind: "iframe".to_string(),
-                                        size: 0, transformed: false, blocked: false,
+                                        id,
+                                        url,
+                                        kind: "iframe".to_string(),
+                                        size: 0,
+                                        transformed: false,
+                                        blocked: false,
                                     });
                                 }
                             }
@@ -241,13 +276,21 @@ impl NeptuneKernel {
         let state = KERNEL_STATE.lock().unwrap();
         let lower = url.to_lowercase();
         for tracker in &state.tracker_blocklist {
-            if lower.contains(tracker) { return true; }
+            if lower.contains(tracker) {
+                return true;
+            }
         }
         false
     }
 
     /// Transform HTML with resource graph awareness
-    pub fn transform_html_advanced(&mut self, html: &str, target_url: &str, _origin: &str, proxy_prefix: &str) -> String {
+    pub fn transform_html_advanced(
+        &mut self,
+        html: &str,
+        target_url: &str,
+        _origin: &str,
+        proxy_prefix: &str,
+    ) -> String {
         console_log("[KERNEL] Advanced HTML transformation");
 
         let mut graph = ResourceGraph::default();
@@ -267,8 +310,12 @@ impl NeptuneKernel {
                                 let kind = if name_str == "link" { "css" } else { name_str };
                                 let blocked = self.is_tracker(&url);
                                 graph.nodes.push(ResourceNode {
-                                    id, url, kind: kind.to_string(),
-                                    size: 0, transformed: true, blocked,
+                                    id,
+                                    url,
+                                    kind: kind.to_string(),
+                                    size: 0,
+                                    transformed: true,
+                                    blocked,
                                 });
                             }
                         }
@@ -279,7 +326,11 @@ impl NeptuneKernel {
         }
 
         let blocked_count = graph.nodes.iter().filter(|n| n.blocked).count();
-        console_log(&format!("[KERNEL] {} resources, {} blocked", graph.nodes.len(), blocked_count));
+        console_log(&format!(
+            "[KERNEL] {} resources, {} blocked",
+            graph.nodes.len(),
+            blocked_count
+        ));
 
         // Transform with knowledge of blocked resources
         let mut out = html.to_string();
@@ -291,11 +342,30 @@ impl NeptuneKernel {
         };
 
         let to_proxy = |u: &str| -> String {
-            if u.starts_with("http") { format!("{}?url={}", proxy_prefix, b64_url_encode(u)) }
-            else if u.starts_with("//") { format!("{}?url={}", proxy_prefix, b64_url_encode(&format!("https:{}", u))) }
-            else if u.starts_with("/") { format!("{}?url={}", proxy_prefix, b64_url_encode(&format!("{}{}", target_origin, u))) }
-            else if u.starts_with('#') || u.starts_with("javascript:") || u.starts_with("mailto:") { u.to_string() }
-            else { format!("{}?url={}", proxy_prefix, b64_url_encode(&resolve_url(u, target_url))) }
+            if u.starts_with("http") {
+                format!("{}?url={}", proxy_prefix, b64_url_encode(u))
+            } else if u.starts_with("//") {
+                format!(
+                    "{}?url={}",
+                    proxy_prefix,
+                    b64_url_encode(&format!("https:{}", u))
+                )
+            } else if u.starts_with("/") {
+                format!(
+                    "{}?url={}",
+                    proxy_prefix,
+                    b64_url_encode(&format!("{}{}", target_origin, u))
+                )
+            } else if u.starts_with('#') || u.starts_with("javascript:") || u.starts_with("mailto:")
+            {
+                u.to_string()
+            } else {
+                format!(
+                    "{}?url={}",
+                    proxy_prefix,
+                    b64_url_encode(&resolve_url(u, target_url))
+                )
+            }
         };
 
         // Block trackers by replacing with empty/noop
@@ -304,12 +374,19 @@ impl NeptuneKernel {
                 match node.kind.as_str() {
                     "script" => {
                         // Replace script tags pointing to trackers with comment
-                        let pattern = format!("<script[^>]*src=[\"']{}[\"'][^>]*></script>", regex::escape(&node.url));
-                        out = regex_replace_all(&pattern, &out, "<!-- neptune: blocked tracker -->");
+                        let pattern = format!(
+                            "<script[^>]*src=[\"']{}[\"'][^>]*></script>",
+                            regex::escape(&node.url)
+                        );
+                        out =
+                            regex_replace_all(&pattern, &out, "<!-- neptune: blocked tracker -->");
                     }
                     "img" => {
                         // Replace tracker pixels with 1x1 transparent
-                        let pattern = format!("<img[^>]*src=[\"']{}[\"'][^>]*/?>", regex::escape(&node.url));
+                        let pattern = format!(
+                            "<img[^>]*src=[\"']{}[\"'][^>]*/?>",
+                            regex::escape(&node.url)
+                        );
                         out = regex_replace_all(&pattern, &out, "<img src=\"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7\" alt=\"\" />");
                     }
                     _ => {}
@@ -373,12 +450,13 @@ impl NeptuneKernel {
 
     pub fn vfs_list(&self, prefix: &str) -> Result<String, JsValue> {
         let state = KERNEL_STATE.lock().unwrap();
-        let files: Vec<&str> = state.vfs_cache.keys()
+        let files: Vec<&str> = state
+            .vfs_cache
+            .keys()
             .filter(|k| k.starts_with(prefix))
             .map(|k| k.as_str())
             .collect();
-        serde_json::to_string(&files)
-            .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
+        serde_json::to_string(&files).map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
     }
 
     // ==========================
@@ -402,8 +480,7 @@ impl NeptuneKernel {
 
     pub fn serialize_state(&self) -> Result<String, JsValue> {
         let state = KERNEL_STATE.lock().unwrap();
-        serde_json::to_string(&*state)
-            .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
+        serde_json::to_string(&*state).map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
     }
 
     pub fn deserialize_state(&mut self, json: &str) -> Result<(), JsValue> {
@@ -412,7 +489,10 @@ impl NeptuneKernel {
         let mut state = KERNEL_STATE.lock().unwrap();
         *state = restored;
         self.heap_size = state.vfs_cache.values().map(|e| e.data.len()).sum();
-        console_log(&format!("[KERNEL] State restored. Heap: {} bytes", self.heap_size));
+        console_log(&format!(
+            "[KERNEL] State restored. Heap: {} bytes",
+            self.heap_size
+        ));
         Ok(())
     }
 
@@ -421,7 +501,11 @@ impl NeptuneKernel {
         let json = serde_json::to_string(&*state)
             .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))?;
         let encoded = b64_encode(json.as_bytes());
-        console_log(&format!("[KERNEL] Snapshot: {} bytes -> {} b64", json.len(), encoded.len()));
+        console_log(&format!(
+            "[KERNEL] Snapshot: {} bytes -> {} b64",
+            json.len(),
+            encoded.len()
+        ));
         Ok(encoded)
     }
 
@@ -433,10 +517,14 @@ impl NeptuneKernel {
             request_count: state.request_count,
             active_sessions: state.active_sessions.len(),
             resource_nodes: state.resource_graph.nodes.len(),
-            blocked_trackers: state.resource_graph.nodes.iter().filter(|n| n.blocked).count(),
+            blocked_trackers: state
+                .resource_graph
+                .nodes
+                .iter()
+                .filter(|n| n.blocked)
+                .count(),
         };
-        serde_json::to_string(&stats)
-            .map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
+        serde_json::to_string(&stats).map_err(|e| JsValue::from_str(&format!("Serialize: {}", e)))
     }
 }
 
@@ -454,7 +542,12 @@ struct HeapStats {
 // HTML Transformation Helpers
 // ==========================
 
-fn rewrite_attr(html: &str, attr: &str, mapper: &dyn Fn(&str) -> String, _target_origin: &str) -> String {
+fn rewrite_attr(
+    html: &str,
+    attr: &str,
+    mapper: &dyn Fn(&str) -> String,
+    _target_origin: &str,
+) -> String {
     let mut result = html.to_string();
 
     // Double-quoted
@@ -481,12 +574,17 @@ fn rewrite_css_urls(css: &str, proxy_prefix: &str, target_origin: &str) -> Strin
         let mapped = if val.starts_with("http") {
             format!("{}?url={}", proxy_prefix, b64_url_encode(val))
         } else if val.starts_with("/") {
-            format!("{}?url={}", proxy_prefix, b64_url_encode(&format!("{}{}", target_origin, val)))
+            format!(
+                "{}?url={}",
+                proxy_prefix,
+                b64_url_encode(&format!("{}{}", target_origin, val))
+            )
         } else {
             val.to_string()
         };
         format!("url({})", mapped)
-    }).to_string()
+    })
+    .to_string()
 }
 
 fn regex_replace_all(pattern: &str, text: &str, replacement: &str) -> String {
@@ -496,7 +594,11 @@ fn regex_replace_all(pattern: &str, text: &str, replacement: &str) -> String {
     }
 }
 
-fn regex_replace_all_fn(pattern: &str, text: &str, f: impl Fn(&regex::Captures) -> String) -> String {
+fn regex_replace_all_fn(
+    pattern: &str,
+    text: &str,
+    f: impl Fn(&regex::Captures) -> String,
+) -> String {
     match regex::Regex::new(pattern) {
         Ok(re) => re.replace_all(text, f).to_string(),
         Err(_) => text.to_string(),
@@ -537,17 +639,21 @@ fn url_parse(url: &str) -> Option<ParsedUrl> {
     } else {
         ("/".to_string(), String::new())
     };
-    Some(ParsedUrl { origin, protocol, host, pathname, search })
+    Some(ParsedUrl {
+        origin,
+        protocol,
+        host,
+        pathname,
+        search,
+    })
 }
 
 fn resolve_url(rel: &str, base: &str) -> String {
     match url::Url::parse(base) {
-        Ok(base_url) => {
-            match base_url.join(rel) {
-                Ok(u) => u.to_string(),
-                Err(_) => format!("{}{}", base.trim_end_matches('/'), rel),
-            }
-        }
+        Ok(base_url) => match base_url.join(rel) {
+            Ok(u) => u.to_string(),
+            Err(_) => format!("{}{}", base.trim_end_matches('/'), rel),
+        },
         Err(_) => format!("{}{}", base.trim_end_matches('/'), rel),
     }
 }
